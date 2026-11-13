@@ -1,0 +1,2977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Y2K Chrome Tribal Brush</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!--
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+-->
+<style>
+  :root { 
+    color-scheme: dark; 
+    --bg: #07080c; 
+    --fg: #e8ecf4; 
+    --muted: #8a93a6; 
+    --accent: #7fb6ff; 
+    --accent-glow: rgba(127,182,255,0.45);
+    --accent-track: rgba(127,182,255,0.12);
+    --accent-ambient: rgba(127,182,255,0.12);
+    --panel-bg: linear-gradient(168deg, rgba(30,34,44,0.92) 0%, rgba(19,22,30,0.92) 42%, rgba(11,13,19,0.96) 100%);
+    --panel-border: rgba(255,255,255,0.12);
+    --panel-border-top: rgba(255,255,255,0.24);
+    --readout-color: #9ee2ff;
+    --readout-bg: #090c12;
+    --tab-active-bg: linear-gradient(180deg, #1f354f 0%, #122336 50%, #0d1928 100%);
+    --tab-border-top: #86bfff;
+    --toggle-active-bg: linear-gradient(180deg, #1b3554 0%, #12243a 50%, #0d1a2a 100%);
+  }
+  * { box-sizing: border-box; }
+  html, body { 
+    margin: 0; 
+    height: 100%; 
+    background: var(--bg); 
+    color: var(--fg); 
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; 
+    overflow: hidden; 
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+
+  /* --- Tactile Skeuomorphic Floating Island Pane --- */
+  #panel { 
+    position: fixed; 
+    top: 20px; 
+    left: 20px; 
+    width: 256px; 
+    max-height: calc(100vh - 40px); 
+    overflow-y: auto; 
+    overflow-x: hidden;
+    padding: 13px 14px 14px; 
+    z-index: 20;
+    /* Hide scrollbar completely across browsers */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    background: 
+      /* Micro-grain texture */
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px),
+      /* Floating dark titanium / glass deck */
+      var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-top: 1px solid var(--panel-border-top);
+    border-left: 1px solid var(--panel-border);
+    border-bottom: 1px solid rgba(0,0,0,0.7);
+    border-right: 1px solid rgba(0,0,0,0.4);
+    border-radius: 16px; 
+    backdrop-filter: blur(20px); 
+    -webkit-backdrop-filter: blur(20px); 
+    box-shadow: 
+      0 1px 0 rgba(255,255,255,0.2) inset,
+      0 -1px 0 rgba(0,0,0,0.85) inset,
+      0 20px 48px rgba(0,0,0,0.75),
+      0 8px 18px rgba(0,0,0,0.5),
+      0 0 35px var(--accent-ambient);
+    transition: border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
+  }
+
+  /* Hide scrollbar on WebKit browsers */
+  #panel::-webkit-scrollbar { 
+    display: none; 
+    width: 0; 
+    height: 0; 
+  }
+
+  /* --- Master Vibe Deck Header --- */
+  .vibe-card {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.7);
+  }
+  .vibe-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+  }
+  .vibe-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-shadow: 0 0 8px var(--accent-glow);
+    transition: color 0.3s ease, text-shadow 0.3s ease;
+  }
+  .vibe-badge {
+    font-family: 'SF Mono', 'Roboto Mono', 'Menlo', monospace;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--accent-track);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    box-shadow: 0 0 8px var(--accent-ambient);
+    transition: all 0.3s ease;
+  }
+
+  /* Nostalgic Analog Noise, Film Dust & Scanlines */
+  .noise {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+    overflow: hidden;
+  }
+  .noise__grain {
+    position: absolute;
+    inset: -64px;
+    pointer-events: none;
+    background-repeat: repeat;
+    background-size: 256px 256px;
+    mix-blend-mode: overlay;
+    will-change: background-position, opacity;
+  }
+  .noise__dust {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+  .noise__lines {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.08;
+    mix-blend-mode: overlay;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.45) 0px,
+      rgba(0, 0, 0, 0.45) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+
+  /* Subtle Inset Divider Between Sliders */
+  #rows .row:nth-child(4) {
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.7);
+  }
+
+  /* Slider Row & Recessed Digital Readout */
+  .row { margin-bottom: 11px; }
+  .row label { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+    font-size: 11px; 
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #8e9bb3; 
+    text-shadow: 0 1px 1px rgba(0,0,0,0.85);
+    margin-bottom: 3px; 
+  }
+  .row label span { 
+    font-family: 'SF Mono', 'Roboto Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--readout-color); 
+    background: var(--readout-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid #1e2535;
+    border-top-color: #0b0e16;
+    border-bottom-color: #2e374d;
+    box-shadow: 
+      inset 0 1px 3px rgba(0,0,0,0.9), 
+      0 1px 0 rgba(255,255,255,0.06);
+    text-shadow: 0 0 6px var(--accent-glow);
+    font-variant-numeric: tabular-nums; 
+    min-width: 32px;
+    text-align: right;
+    transition: color 0.3s ease, background 0.3s ease, text-shadow 0.3s ease;
+  }
+
+  /* --- Tactile Milled Faders / Sliders --- */
+  input[type=range] { 
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%; 
+    height: 18px;
+    background: transparent;
+    cursor: pointer;
+    margin: 3px 0 1px;
+  }
+  input[type=range]:focus { outline: none; }
+
+  /* WebKit Track */
+  input[type=range]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 8px;
+    cursor: pointer;
+    background: 
+      linear-gradient(90deg, var(--accent-track), rgba(127,182,255,0.02)),
+      linear-gradient(180deg, #07090e 0%, #131721 50%, #1a1f2c 100%);
+    border-radius: 4px;
+    border: 1px solid #242a3a;
+    border-top-color: #0c0e15;
+    border-bottom-color: #3b455b;
+    box-shadow: 
+      inset 0 2px 4px rgba(0,0,0,0.92), 
+      0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  /* WebKit Thumb / Fader Knob */
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 19px;
+    height: 21px;
+    margin-top: -7px;
+    border-radius: 4px;
+    background: 
+      /* Dynamic center indicator notch */
+      linear-gradient(90deg, transparent 44%, var(--accent) 45%, var(--accent) 55%, transparent 56%),
+      /* Tactile knurling ridges */
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.18) 0px, rgba(255,255,255,0.18) 1px, transparent 1px, transparent 3px),
+      /* Metallic fader gradient */
+      linear-gradient(180deg, #535d70 0%, #323946 48%, #20242e 52%, #3a4353 100%);
+    border: 1px solid #141720;
+    border-top: 1px solid #919eb8;
+    border-bottom: 1px solid #090b10;
+    box-shadow: 
+      0 4px 6px rgba(0,0,0,0.65), 
+      0 1px 2px rgba(0,0,0,0.85), 
+      inset 0 1px 0 rgba(255,255,255,0.45), 
+      inset 0 -1px 0 rgba(0,0,0,0.55);
+    transition: transform 0.08s ease, filter 0.15s ease;
+  }
+  input[type=range]::-webkit-slider-thumb:hover {
+    filter: brightness(1.15);
+    box-shadow: 
+      0 4px 8px rgba(0,0,0,0.7), 
+      0 0 8px var(--accent-glow), 
+      inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+  input[type=range]::-webkit-slider-thumb:active {
+    transform: scale(0.96);
+    filter: brightness(1.25);
+    box-shadow: 
+      0 2px 4px rgba(0,0,0,0.8), 
+      0 0 12px var(--accent-glow), 
+      inset 0 1px 0 rgba(255,255,255,0.8);
+  }
+
+  /* Firefox Track & Thumb */
+  input[type=range]::-moz-range-track {
+    width: 100%;
+    height: 8px;
+    cursor: pointer;
+    background: 
+      linear-gradient(90deg, var(--accent-track), rgba(127,182,255,0.02)),
+      linear-gradient(180deg, #07090e 0%, #131721 50%, #1a1f2c 100%);
+    border-radius: 4px;
+    border: 1px solid #242a3a;
+    border-top-color: #0c0e15;
+    border-bottom-color: #3b455b;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.92), 0 1px 0 rgba(255,255,255,0.08);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 19px;
+    height: 21px;
+    border-radius: 4px;
+    background: 
+      linear-gradient(90deg, transparent 44%, var(--accent) 45%, var(--accent) 55%, transparent 56%),
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.18) 0px, rgba(255,255,255,0.18) 1px, transparent 1px, transparent 3px),
+      linear-gradient(180deg, #535d70 0%, #323946 48%, #20242e 52%, #3a4353 100%);
+    border: 1px solid #141720;
+    border-top: 1px solid #919eb8;
+    border-bottom: 1px solid #090b10;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.65), 0 1px 2px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.45);
+  }
+
+  /* --- Tactile Rotary / Selector Module --- */
+  select { 
+    width: 100%; 
+    padding: 8px 28px 8px 10px; 
+    font: inherit; 
+    font-size: 11.5px; 
+    font-weight: 600;
+    color: #e2e8f4; 
+    background: 
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237fb6ff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat calc(100% - 10px) center,
+      linear-gradient(180deg, #282f3c 0%, #1c212c 50%, #131721 100%); 
+    border: 1px solid #363e51; 
+    border-top-color: #5c6885;
+    border-bottom-color: #0a0d13;
+    border-radius: 7px; 
+    box-shadow: 
+      0 3px 0 #0b0d13,
+      0 4px 6px rgba(0,0,0,0.55),
+      inset 0 1px 0 rgba(255,255,255,0.22);
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.85);
+    transition: all 0.15s ease;
+  }
+  select:hover { 
+    border-color: #49546d;
+    border-top-color: #7280a3;
+    background-color: #2c3342;
+  }
+  select:active, select:focus {
+    outline: none;
+    transform: translateY(1px);
+    box-shadow: 
+      0 2px 0 #0b0d13,
+      0 2px 4px rgba(0,0,0,0.65),
+      inset 0 1px 2px rgba(0,0,0,0.7),
+      0 0 0 1px var(--accent);
+  }
+  option { background: #12151e; color: #e8ecf4; }
+
+  /* --- Tactile Mechanical Push-Buttons & Toggle Switches --- */
+  .buttons { display: flex; gap: 8px; margin-top: 13px; }
+  .buttons.w { flex-wrap: wrap; margin-top: 8px; }
+  .buttons.w button { flex: 1 1 42%; }
+
+  button { 
+    flex: 1; 
+    padding: 8px 6px; 
+    font: inherit; 
+    font-size: 11px; 
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #dbe3f1; 
+    background: linear-gradient(180deg, #343b49 0%, #222733 48%, #181c25 52%, #1b202a 100%); 
+    border: 1px solid #2d3444; 
+    border-top: 1px solid #58647f;
+    border-bottom: 1px solid #0c0f15;
+    border-radius: 7px; 
+    box-shadow: 
+      0 3px 0 #0b0d13, 
+      0 5px 8px rgba(0,0,0,0.6), 
+      inset 0 1px 0 rgba(255,255,255,0.26),
+      inset 0 -1px 0 rgba(0,0,0,0.6);
+    cursor: pointer; 
+    text-shadow: 0 1px 1px rgba(0,0,0,0.9);
+    transition: transform 0.08s ease, filter 0.12s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  button:hover { 
+    filter: brightness(1.12);
+    box-shadow: 
+      0 3px 0 #0b0d13, 
+      0 6px 10px rgba(0,0,0,0.7), 
+      inset 0 1px 0 rgba(255,255,255,0.35);
+  }
+
+  button:active { 
+    transform: translateY(2px); 
+    box-shadow: 
+      0 1px 0 #0b0d13, 
+      0 2px 4px rgba(0,0,0,0.7), 
+      inset 0 2px 4px rgba(0,0,0,0.85); 
+  }
+
+  /* Special Industrial Accent for Clear Button */
+  #clear:hover {
+    border-color: rgba(255,100,80,0.45);
+    border-top-color: rgba(255,140,120,0.6);
+    color: #ffb8ad;
+  }
+
+  /* LED Status Pip on Switch Buttons */
+  #spike::before, 
+  #bAnim::before, 
+  #bCur::before, 
+  #b3d::before, 
+  #bOrb::before,
+  #btnPanMode::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+    background: #141822;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.95), 0 1px 0 rgba(255,255,255,0.18);
+    transition: all 0.15s ease;
+  }
+
+  /* Illuminated ON state for toggles */
+  button.is-active,
+  button[style*="182"],
+  button[style*="rgba(127"] {
+    background: var(--toggle-active-bg) !important;
+    color: #f0f7ff !important;
+    border-color: var(--accent) !important;
+    border-top-color: var(--tab-border-top) !important;
+    box-shadow: 
+      0 2px 0 #07101a, 
+      0 0 15px var(--accent-glow), 
+      inset 0 0 10px var(--accent-glow), 
+      inset 0 1px 1px rgba(255,255,255,0.55) !important;
+    text-shadow: 0 0 8px var(--accent-glow);
+  }
+
+  /* Glowing LED Pip when active */
+  button.is-active::before,
+  button[style*="182"]::before,
+  button[style*="rgba(127"]::before {
+    background: var(--accent) !important;
+    box-shadow: 0 0 6px var(--accent), 0 0 12px var(--accent), inset 0 1px 1px #ffffff !important;
+  }
+
+  /* Technical Stamped Chassis Legend */
+  .hint { 
+    margin-top: 14px; 
+    font-size: 10.5px; 
+    line-height: 1.55; 
+    color: #7d889e; 
+    background: rgba(7, 9, 14, 0.65);
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #1c222e;
+    border-top-color: #0d1016;
+    border-bottom-color: #2b3547;
+    box-shadow: 
+      inset 0 1px 4px rgba(0,0,0,0.85),
+      0 1px 0 rgba(255,255,255,0.05);
+    text-shadow: 0 1px 1px rgba(0,0,0,0.95);
+  }
+
+  /* Zoom Controls Bar */
+  .zoom-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    padding-bottom: 11px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.7);
+  }
+  .zoom-bar button {
+    padding: 6px 4px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  #btnZoomReset {
+    font-family: 'SF Mono', 'Roboto Mono', 'Menlo', monospace;
+    font-size: 10.5px;
+    min-width: 48px;
+    color: #a4dcff;
+  }
+
+  /* Reference Sigil Module */
+  .ref-module {
+    margin-top: 13px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 -1px 0 rgba(0,0,0,0.6);
+  }
+  .ref-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .ref-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #8e9bb3;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.85);
+  }
+  .ref-btn-add {
+    padding: 4px 8px;
+    font-size: 10px;
+    flex: initial;
+    border-radius: 6px;
+    color: var(--accent);
+  }
+
+  /* Reference Image Layer */
+  #ref-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+    overflow: hidden;
+  }
+  #ref-img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    display: none;
+    transform-origin: 0 0;
+    transition: opacity 0.12s ease;
+    filter: drop-shadow(0 0 12px rgba(0,0,0,0.7));
+  }
+
+  /* Tactile Category Tabs */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.7);
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 6px 2px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #8390a8;
+    background: linear-gradient(180deg, #252b36 0%, #171b23 100%);
+    border: 1px solid #2d3444;
+    border-top: 1px solid #4a546c;
+    border-bottom: 1px solid #090b10;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 2px 0 #0b0d13, inset 0 1px 0 rgba(255,255,255,0.18);
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: #e5edf9;
+    filter: brightness(1.15);
+  }
+  .tab-btn.active {
+    color: #ffffff;
+    background: var(--tab-active-bg);
+    border-color: var(--accent);
+    border-top-color: var(--tab-border-top);
+    box-shadow: 
+      0 1px 0 #07101a,
+      0 0 10px var(--accent-glow),
+      inset 0 1px 0 rgba(255,255,255,0.4);
+    text-shadow: 0 0 6px var(--accent-glow);
+  }
+  .tab-pane {
+    display: none;
+  }
+  .tab-pane.active {
+    display: block;
+  }
+
+  /* Tactile Export Panel Controls (Commented out)
+  .export-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 12px 0 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .export-section-title:first-child {
+    margin-top: 2px;
+  }
+  .export-section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+  }
+  .export-hint {
+    font-size: 10px;
+    line-height: 1.45;
+    color: #8390a8;
+    margin-top: 5px;
+    margin-bottom: 12px;
+  }
+  .export-btn {
+    flex: 1;
+    padding: 7px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #e5edf9;
+    background: linear-gradient(180deg, #2d3444 0%, #1c212b 100%);
+    border: 1px solid #3d465c;
+    border-top: 1px solid #5a6684;
+    border-bottom: 1px solid #10131a;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 2px 0 #090b10, inset 0 1px 0 rgba(255,255,255,0.18);
+    transition: all 0.15s ease;
+  }
+  .export-btn:hover {
+    color: #ffffff;
+    filter: brightness(1.2);
+    border-color: var(--accent);
+  }
+  .export-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 0 #090b10;
+  }
+  .export-btn-accent {
+    background: var(--tab-active-bg);
+    border-color: var(--accent);
+    border-top-color: var(--tab-border-top);
+    box-shadow: 0 2px 0 #07101a, 0 0 10px var(--accent-ambient), inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  .export-status {
+    margin-top: 10px;
+    padding: 7px 8px;
+    background: var(--readout-bg);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 10px;
+    color: var(--readout-color);
+    text-align: center;
+    letter-spacing: 0.05em;
+  }
+  */
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<svg id='guide' style='position:fixed;inset:0;width:100%;height:100%;pointer-events:none'></svg>
+
+<div id="ref-layer">
+  <img id="ref-img" alt="Reference Sigil" />
+</div>
+
+<div class="noise" aria-hidden="true">
+  <div class="noise__grain"></div>
+  <canvas class="noise__dust"></canvas>
+  <div class="noise__lines"></div>
+</div>
+
+<div id="panel">
+  <!-- Vibe & Style Deck Header -->
+  <div class="vibe-card">
+    <div class="vibe-header">
+      <span class="vibe-title">Aesthetic Vibe</span>
+      <span class="vibe-badge" id="vibeBadge">K-POP</span>
+    </div>
+    <select id="vibeSel"></select>
+  </div>
+
+  <!-- Tactile Category Tabs -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="tab-brush">Brush</button>
+    <button class="tab-btn" data-tab="tab-chrome">Chrome</button>
+    <button class="tab-btn" data-tab="tab-comp">Comp</button>
+    <button class="tab-btn" data-tab="tab-ref">Ref</button>
+    <!-- <button class="tab-btn" data-tab="tab-export">Export</button> -->
+  </div>
+
+  <!-- Tab 1: Brush -->
+  <div id="tab-brush" class="tab-pane active">
+    <!-- Zoom & Pan Controls -->
+    <div class="zoom-bar">
+      <button id="btnZoomOut" title="Zoom Out (Wheel Down)">−</button>
+      <button id="btnZoomReset" title="Reset Zoom">100%</button>
+      <button id="btnZoomIn" title="Zoom In (Wheel Up)">+</button>
+      <button id="btnPanMode" title="Pan Canvas (or Hold Spacebar)">Pan</button>
+    </div>
+    <div id="rows-brush"></div>
+    <div class="row"><label>Symmetry</label><select id="sym"></select></div>
+    <div class="buttons">
+      <button id="undo">Undo</button>
+      <button id="clear">Clear</button>
+      <button id="spike">Spike mode</button>
+    </div>
+  </div>
+
+  <!-- Tab 2: Chrome -->
+  <div id="tab-chrome" class="tab-pane">
+    <div id="rows-chrome"></div>
+    <div class="row"><label>Environment / Vibe</label><select id="pal"></select></div>
+    <div class="buttons w">
+      <button id="bAnim"></button>
+      <button id="bCur"></button>
+      <button id="b3d"></button>
+      <button id="bOrb"></button>
+    </div>
+  </div>
+
+  <!-- Tab 3: Composition (Comp) -->
+  <div id="tab-comp" class="tab-pane">
+    <div id="rows-comp"></div>
+  </div>
+
+  <!-- Tab 4: Reference Sigil Tracing -->
+  <div id="tab-ref" class="tab-pane">
+    <div class="ref-header" style="margin-bottom:10px;">
+      <span class="ref-label">Reference</span>
+      <input type="file" id="refFile" accept="image/*" style="display:none;" />
+      <button id="btnLoadRef" class="ref-btn-add">+ Image (⌘V)</button>
+    </div>
+    <div id="refControls" style="display:none;">
+      <div class="row">
+        <label>Ref Opacity <span id="refOpVal">40%</span></label>
+        <input type="range" id="refOpacity" min="0.05" max="1" step="0.05" value="0.4" />
+      </div>
+      <div class="row">
+        <label>Ref Scale <span id="refScaleVal">1.0x</span></label>
+        <input type="range" id="refScale" min="0.2" max="3" step="0.05" value="1" />
+      </div>
+      <div class="row">
+        <label>Ref Blend</label>
+        <select id="refBlend">
+          <option value="normal">Normal</option>
+          <option value="screen">Screen (Dark BG)</option>
+          <option value="multiply">Multiply (Light BG)</option>
+        </select>
+      </div>
+      <div class="buttons">
+        <button id="btnRefCenter">Center</button>
+        <button id="btnRefToggle">Hide</button>
+        <button id="btnRefClear">Remove</button>
+      </div>
+    </div>
+    <div id="refEmptyHint" style="font-size:11px;color:#7d889e;line-height:1.55;padding:8px 2px;">
+      Paste an image from clipboard (⌘V / Ctrl+V), drag &amp; drop onto canvas, or click <strong>+ Image</strong> to trace existing sigils.
+    </div>
+  </div>
+
+  <!-- Tab 5: Export Options (Commented out)
+  <div id="tab-export" class="tab-pane">
+    <div class="export-section-title">Image Export</div>
+    <div class="row">
+      <label>Aspect Ratio</label>
+      <select id="expAspect">
+        <option value="1:1">1:1 Square (2048x2048)</option>
+        <option value="4:5">4:5 Portrait (1638x2048)</option>
+        <option value="9:16">9:16 Story / Reels (1152x2048)</option>
+        <option value="16:9">16:9 Landscape (2048x1152)</option>
+        <option value="4:3">4:3 Classic (2048x1536)</option>
+        <option value="auto">Viewport / Screen View</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Resolution</label>
+      <select id="expRes">
+        <option value="2048">Ultra HD (2048px)</option>
+        <option value="1536">High Res (1536px)</option>
+        <option value="1024">Standard (1024px)</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Framing</label>
+      <select id="expFraming">
+        <option value="fit">Auto Fit (Centered)</option>
+        <option value="view">Current Viewport</option>
+      </select>
+    </div>
+    <div class="buttons" style="margin-top:6px;">
+      <button id="btnExportPng" class="export-btn export-btn-accent">PNG (Object Only)</button>
+      <button id="btnExportJpg" class="export-btn">JPEG (Full Art)</button>
+    </div>
+    <div class="export-hint">
+      PNG exports isolated chrome object with alpha transparency. JPEG includes active vibe background, star flares, and analog film grain.
+    </div>
+
+    <div class="export-section-title">3D Model &amp; Print</div>
+    <div class="row">
+      <label>Base Style</label>
+      <select id="exp3dBase">
+        <option value="solid">Solid Plinth (Watertight 3D Print)</option>
+        <option value="surface">Relief Surface (Mesh Only)</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Mesh Density</label>
+      <select id="exp3dRes">
+        <option value="256">Fine (256x256 Grid)</option>
+        <option value="180">Standard (180x180 Grid)</option>
+        <option value="360">Ultra Fine (360x360 Grid)</option>
+      </select>
+    </div>
+    <div class="buttons" style="margin-top:6px;">
+      <button id="btnExportStl" class="export-btn">STL (.stl 3D Print)</button>
+      <button id="btnExportGltf" class="export-btn">GLTF (.glb PBR)</button>
+    </div>
+    <div class="export-hint">
+      STL produces watertight solid manifold mesh for 3D slicers (Bambu, Cura, Prusa). GLTF includes metallic PBR chrome material for 3D viewers and Blender.
+    </div>
+
+    <div id="exportStatus" class="export-status">Ready for export</div>
+  </div>
+  -->
+
+  <div class="hint">Drag to draw. In spike mode, press on a stroke and drag outward. Pinch or scroll wheel to zoom. Hold Spacebar to pan. Paste (⌘V) or load a reference image to trace sigils. Pen pressure changes thickness. Ctrl/Cmd+Z to undo.</div>
+</div>
+<script>
+// ---------- parameters / UI ----------
+const P = {};
+const DEF = [
+  // Brush parameters
+  ['width', 'Width', 4, 60, 1, 14, 'brush'],
+  ['taper', 'Taper', 0, 1, .05, .5, 'brush'],
+  ['pressure', 'Pressure', 0, 1, .05, 1, 'brush'],
+  ['spikeLen', 'Spike length', .3, 3, .05, 1, 'brush'],
+  
+  // Chrome shading & 3D parameters
+  ['bevel', 'Bevel', .5, 6, .1, 3.5, 'chrome'],
+  ['chisel', 'Chisel ridge', 0, 1, .05, .7, 'chrome'],
+  ['speed', 'Shimmer', 0, 2, .05, .6, 'chrome'],
+  ['iri', 'Iridescence', 0, .6, .01, .06, 'chrome'],
+  ['fusion', 'Fusion', 0, 1, .05, .5, 'chrome'],
+  ['outline', 'Outline', 0, 8, .5, 2, 'chrome'],
+  ['depth', '3D depth', 1, 16, .5, 6, 'chrome'],
+  
+  // Composition FX: Nostalgic Glow, Chromatic Aberration & Grain
+  ['glow', 'Star glow', 0, 1.5, .05, 0.15, 'comp'],
+  ['aberration', 'Aberration', 0, 1, .02, 0.06, 'comp'],
+  ['noise', 'Noise', 0, .5, .01, 0.1, 'comp']
+];
+const LIVE = ['speed', 'bevel', 'chisel', 'fusion', 'iri', 'depth', 'noise', 'glow', 'aberration']; // shading-only: no geometry rebuild
+
+const UI_INPUTS = {};
+DEF.forEach(([k, l, mn, mx, st, v, cat]) => {
+  P[k] = v;
+  const d = document.createElement('div'); d.className = 'row';
+  d.innerHTML = `<label>${l} <span>${v}</span></label><input type="range" id="input-${k}" min="${mn}" max="${mx}" step="${st}" value="${v}">`;
+  const container = document.getElementById('rows-' + cat) || document.getElementById('rows-brush');
+  container.appendChild(d);
+  const el = d.querySelector('input'), sp = d.querySelector('span');
+  UI_INPUTS[k] = { input: el, span: sp };
+  el.addEventListener('input', () => { P[k] = +el.value; sp.textContent = el.value; if (!LIVE.includes(k)) rebuildAll(); });
+});
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const target = document.getElementById(btn.dataset.tab);
+    if (target) target.classList.add('active');
+  };
+});
+
+// Curated Aesthetic Vibes: Environment Reflections + Tailored Parameters + Whole-App Styling
+const PAL = {
+  'Pink K-Pop': {
+    name: 'Pink K-Pop (Glossy Idol)',
+    badge: 'K-POP',
+    sky: [.98, .45, .78],
+    hor: [1.0, .92, .98],
+    band: [.65, .85, 1.0],
+    ground: [.26, .04, .18],
+    bg: [.075, .022, .07],
+    iri: .28,
+    params: {
+      width: 18,
+      taper: 0.65,
+      pressure: 0.9,
+      spikeLen: 0.8,
+      bevel: 4.5,
+      chisel: 0.3,
+      speed: 0.75,
+      iri: 0.28,
+      fusion: 0.75,
+      outline: 1.5,
+      depth: 7.0,
+      glow: 0.15,
+      aberration: 0.06,
+      noise: 0.1
+    },
+    theme: {
+      accent: '#ff4db8',
+      accentGlow: 'rgba(255, 77, 184, 0.55)',
+      accentTrack: 'rgba(255, 77, 184, 0.22)',
+      accentAmbient: 'rgba(255, 77, 184, 0.18)',
+      bg: '#120614',
+      panelBg: 'linear-gradient(168deg, rgba(42, 16, 36, 0.94) 0%, rgba(28, 10, 24, 0.94) 42%, rgba(18, 6, 17, 0.97) 100%)',
+      panelBorder: 'rgba(255, 120, 195, 0.25)',
+      panelBorderTop: 'rgba(255, 185, 230, 0.48)',
+      readoutColor: '#ffb8e6',
+      readoutBg: '#1a0618',
+      tabActiveBg: 'linear-gradient(180deg, #611344 0%, #420b2d 50%, #2a051d 100%)',
+      tabBorderTop: '#ffa3db',
+      toggleActiveBg: 'linear-gradient(180deg, #611344 0%, #420b2d 50%, #2a051d 100%)',
+      guideColor: 'rgba(255, 77, 184, 0.45)'
+    }
+  },
+  'Dark Goth': {
+    name: 'Dark Goth (Obsidian Thorn)',
+    badge: 'GOTH',
+    sky: [.18, .02, .04],
+    hor: [.95, .12, .18],
+    band: [.55, .58, .65],
+    ground: [.015, .008, .015],
+    bg: [.02, .012, .018],
+    iri: .02,
+    params: {
+      width: 10,
+      taper: 0.92,
+      pressure: 1.0,
+      spikeLen: 2.4,
+      bevel: 2.4,
+      chisel: 0.95,
+      speed: 0.25,
+      iri: 0.02,
+      fusion: 0.2,
+      outline: 3.5,
+      depth: 11.0,
+      glow: 0.15,
+      aberration: 0.06,
+      noise: 0.1
+    },
+    theme: {
+      accent: '#e62638',
+      accentGlow: 'rgba(230, 38, 56, 0.55)',
+      accentTrack: 'rgba(230, 38, 56, 0.2)',
+      accentAmbient: 'rgba(230, 38, 56, 0.18)',
+      bg: '#060305',
+      panelBg: 'linear-gradient(168deg, rgba(30, 12, 16, 0.96) 0%, rgba(20, 8, 11, 0.96) 42%, rgba(10, 4, 6, 0.98) 100%)',
+      panelBorder: 'rgba(230, 45, 65, 0.22)',
+      panelBorderTop: 'rgba(255, 70, 90, 0.45)',
+      readoutColor: '#ff6b7b',
+      readoutBg: '#120306',
+      tabActiveBg: 'linear-gradient(180deg, #570f17 0%, #3b080f 50%, #220308 100%)',
+      tabBorderTop: '#ff5768',
+      toggleActiveBg: 'linear-gradient(180deg, #570f17 0%, #3b080f 50%, #220308 100%)',
+      guideColor: 'rgba(230, 38, 56, 0.45)'
+    }
+  },
+  'Anubis': {
+    name: 'Anubis (Black & Gold)',
+    badge: 'ANUBIS',
+    sky: [.10, .08, .05],
+    hor: [1.0, .84, .38],
+    band: [.85, .62, .18],
+    ground: [.015, .012, .008],
+    bg: [.025, .020, .014],
+    iri: .04,
+    params: {
+      width: 13,
+      taper: 0.75,
+      pressure: 0.95,
+      spikeLen: 1.4,
+      bevel: 3.8,
+      chisel: 0.82,
+      speed: 0.5,
+      iri: 0.04,
+      fusion: 0.45,
+      outline: 2.2,
+      depth: 8.5,
+      glow: 0.15,
+      aberration: 0.06,
+      noise: 0.1
+    },
+    theme: {
+      accent: '#e5b842',
+      accentGlow: 'rgba(229, 184, 66, 0.55)',
+      accentTrack: 'rgba(229, 184, 66, 0.18)',
+      accentAmbient: 'rgba(229, 184, 66, 0.15)',
+      bg: '#080604',
+      panelBg: 'linear-gradient(168deg, rgba(26, 22, 16, 0.96) 0%, rgba(18, 14, 10, 0.96) 42%, rgba(10, 8, 5, 0.98) 100%)',
+      panelBorder: 'rgba(229, 184, 66, 0.25)',
+      panelBorderTop: 'rgba(255, 215, 110, 0.5)',
+      readoutColor: '#ffe082',
+      readoutBg: '#120e06',
+      tabActiveBg: 'linear-gradient(180deg, #4d3a0f 0%, #332607 50%, #1f1703 100%)',
+      tabBorderTop: '#ffd54f',
+      toggleActiveBg: 'linear-gradient(180deg, #4d3a0f 0%, #332607 50%, #1f1703 100%)',
+      guideColor: 'rgba(229, 184, 66, 0.45)'
+    }
+  },
+  'Bryce Desert': {
+    name: 'Bryce Desert (Y2K Classic)',
+    badge: 'BRYCE',
+    sky: [.16, .36, .92],
+    hor: [1.0, .98, .90],
+    band: [.38, .72, 1.0],
+    ground: [.36, .14, .06],
+    bg: [.027, .031, .047],
+    iri: .04,
+    params: {
+      width: 14,
+      taper: 0.5,
+      pressure: 1.0,
+      spikeLen: 1.0,
+      bevel: 3.5,
+      chisel: 0.7,
+      speed: 0.6,
+      iri: 0.06,
+      fusion: 0.5,
+      outline: 2.0,
+      depth: 6.0,
+      glow: 0.15,
+      aberration: 0.06,
+      noise: 0.1
+    },
+    theme: {
+      accent: '#7fb6ff',
+      accentGlow: 'rgba(127, 182, 255, 0.45)',
+      accentTrack: 'rgba(127, 182, 255, 0.12)',
+      accentAmbient: 'rgba(127, 182, 255, 0.12)',
+      bg: '#07080c',
+      panelBg: 'linear-gradient(168deg, rgba(30,34,44,0.92) 0%, rgba(19,22,30,0.92) 42%, rgba(11,13,19,0.96) 100%)',
+      panelBorder: 'rgba(255,255,255,0.12)',
+      panelBorderTop: 'rgba(255,255,255,0.24)',
+      readoutColor: '#9ee2ff',
+      readoutBg: '#090c12',
+      tabActiveBg: 'linear-gradient(180deg, #1f354f 0%, #122336 50%, #0d1928 100%)',
+      tabBorderTop: '#86bfff',
+      toggleActiveBg: 'linear-gradient(180deg, #1b3554 0%, #12243a 50%, #0d1a2a 100%)',
+      guideColor: 'rgba(127, 182, 255, 0.4)'
+    }
+  },
+  'Acid Matrix': {
+    name: 'Acid Matrix (Cyber Rave)',
+    badge: 'MATRIX',
+    sky: [.06, .26, .10],
+    hor: [.45, 1.0, .35],
+    band: [.80, 1.0, .25],
+    ground: [.02, .08, .03],
+    bg: [.012, .032, .018],
+    iri: .15,
+    params: {
+      width: 12,
+      taper: 0.75,
+      pressure: 0.95,
+      spikeLen: 1.5,
+      bevel: 3.2,
+      chisel: 0.85,
+      speed: 1.4,
+      iri: 0.15,
+      fusion: 0.55,
+      outline: 2.5,
+      depth: 8.0,
+      glow: 0.15,
+      aberration: 0.06,
+      noise: 0.1
+    },
+    theme: {
+      accent: '#39ff75',
+      accentGlow: 'rgba(57, 255, 117, 0.5)',
+      accentTrack: 'rgba(57, 255, 117, 0.18)',
+      accentAmbient: 'rgba(57, 255, 117, 0.15)',
+      bg: '#040a05',
+      panelBg: 'linear-gradient(168deg, rgba(16, 36, 20, 0.94) 0%, rgba(10, 24, 13, 0.94) 42%, rgba(5, 15, 7, 0.97) 100%)',
+      panelBorder: 'rgba(57, 255, 117, 0.22)',
+      panelBorderTop: 'rgba(120, 255, 160, 0.45)',
+      readoutColor: '#82ffab',
+      readoutBg: '#061609',
+      tabActiveBg: 'linear-gradient(180deg, #155428 0%, #0b3819 50%, #062410 100%)',
+      tabBorderTop: '#62ff95',
+      toggleActiveBg: 'linear-gradient(180deg, #155428 0%, #0b3819 50%, #062410 100%)',
+      guideColor: 'rgba(57, 255, 117, 0.45)'
+    }
+  },
+  'Liquid Mercury': {
+    name: 'Liquid Mercury (Molten Chrome)',
+    badge: 'MERCURY',
+    sky: [.82, .86, .92],
+    hor: [1.0, 1.0, 1.0],
+    band: [.14, .17, .22],
+    ground: [.02, .02, .03],
+    bg: [.02, .024, .03],
+    iri: 0,
+    params: {
+      width: 22,
+      taper: 0.35,
+      pressure: 0.7,
+      spikeLen: 0.5,
+      bevel: 5.2,
+      chisel: 0.08,
+      speed: 0.4,
+      iri: 0.0,
+      fusion: 0.92,
+      outline: 1.0,
+      depth: 9.0,
+      glow: 0.15,
+      aberration: 0.06,
+      noise: 0.1
+    },
+    theme: {
+      accent: '#e2ebf8',
+      accentGlow: 'rgba(226, 235, 248, 0.5)',
+      accentTrack: 'rgba(226, 235, 248, 0.15)',
+      accentAmbient: 'rgba(226, 235, 248, 0.15)',
+      bg: '#07080b',
+      panelBg: 'linear-gradient(168deg, rgba(35, 38, 46, 0.94) 0%, rgba(22, 25, 32, 0.94) 42%, rgba(13, 15, 20, 0.97) 100%)',
+      panelBorder: 'rgba(226, 235, 248, 0.22)',
+      panelBorderTop: 'rgba(255, 255, 255, 0.45)',
+      readoutColor: '#ffffff',
+      readoutBg: '#0e1015',
+      tabActiveBg: 'linear-gradient(180deg, #444a59 0%, #292d37 50%, #1a1c23 100%)',
+      tabBorderTop: '#d0d7e6',
+      toggleActiveBg: 'linear-gradient(180deg, #444a59 0%, #292d37 50%, #1a1c23 100%)',
+      guideColor: 'rgba(226, 235, 248, 0.45)'
+    }
+  },
+  'Cyber Sunset': {
+    name: 'Cyber Sunset (Synthwave)',
+    badge: 'SUNSET',
+    sky: [.36, .14, .68],
+    hor: [1.0, .58, .26],
+    band: [.95, .22, .65],
+    ground: [.08, .02, .12],
+    bg: [.04, .02, .07],
+    iri: .24,
+    params: {
+      width: 16,
+      taper: 0.55,
+      pressure: 0.9,
+      spikeLen: 1.1,
+      bevel: 3.8,
+      chisel: 0.65,
+      speed: 0.7,
+      iri: 0.24,
+      fusion: 0.6,
+      outline: 2.0,
+      depth: 6.5,
+      glow: 0.15,
+      aberration: 0.06,
+      noise: 0.1
+    },
+    theme: {
+      accent: '#ff7336',
+      accentGlow: 'rgba(255, 115, 54, 0.55)',
+      accentTrack: 'rgba(255, 115, 54, 0.18)',
+      accentAmbient: 'rgba(255, 115, 54, 0.15)',
+      bg: '#0a0410',
+      panelBg: 'linear-gradient(168deg, rgba(40, 18, 42, 0.94) 0%, rgba(26, 11, 28, 0.94) 42%, rgba(16, 6, 17, 0.97) 100%)',
+      panelBorder: 'rgba(255, 130, 70, 0.22)',
+      panelBorderTop: 'rgba(255, 170, 110, 0.45)',
+      readoutColor: '#ffa678',
+      readoutBg: '#170714',
+      tabActiveBg: 'linear-gradient(180deg, #592036 0%, #3d1225 50%, #260917 100%)',
+      tabBorderTop: '#ff8855',
+      toggleActiveBg: 'linear-gradient(180deg, #592036 0%, #3d1225 50%, #260917 100%)',
+      guideColor: 'rgba(255, 115, 54, 0.45)'
+    }
+  },
+  'Pure Silver': {
+    name: 'Pure Silver (Industrial)',
+    badge: 'SILVER',
+    sky: [.72, .76, .82],
+    hor: [.96, .98, 1.0],
+    band: [.50, .54, .60],
+    ground: [.08, .09, .11],
+    bg: [.025, .028, .035],
+    iri: 0,
+    params: {
+      width: 11,
+      taper: 0.6,
+      pressure: 0.85,
+      spikeLen: 1.0,
+      bevel: 3.2,
+      chisel: 0.75,
+      speed: 0.5,
+      iri: 0.0,
+      fusion: 0.4,
+      outline: 1.5,
+      depth: 5.5,
+      glow: 0.15,
+      aberration: 0.06,
+      noise: 0.1
+    },
+    theme: {
+      accent: '#9ec2e6',
+      accentGlow: 'rgba(158, 194, 230, 0.45)',
+      accentTrack: 'rgba(158, 194, 230, 0.12)',
+      accentAmbient: 'rgba(158, 194, 230, 0.12)',
+      bg: '#08090d',
+      panelBg: 'linear-gradient(168deg, rgba(28, 31, 38, 0.94) 0%, rgba(18, 20, 26, 0.94) 42%, rgba(10, 12, 16, 0.97) 100%)',
+      panelBorder: 'rgba(158, 194, 230, 0.18)',
+      panelBorderTop: 'rgba(210, 230, 255, 0.35)',
+      readoutColor: '#b8d7f9',
+      readoutBg: '#0a0c10',
+      tabActiveBg: 'linear-gradient(180deg, #2a374a 0%, #1a2330 50%, #101620 100%)',
+      tabBorderTop: '#adcbeb',
+      toggleActiveBg: 'linear-gradient(180deg, #2a374a 0%, #1a2330 50%, #101620 100%)',
+      guideColor: 'rgba(158, 194, 230, 0.4)'
+    }
+  },
+  'Prismatic Acid': {
+    name: 'Prismatic Acid (Hologram)',
+    badge: 'PRISM',
+    sky: [.28, .45, .90],
+    hor: [1.0, .45, .12],
+    band: [.60, .20, .95],
+    ground: [.10, .05, .18],
+    bg: [.03, .02, .06],
+    iri: .38,
+    params: {
+      width: 15,
+      taper: 0.5,
+      pressure: 1.0,
+      spikeLen: 1.3,
+      bevel: 4.0,
+      chisel: 0.6,
+      speed: 0.9,
+      iri: 0.38,
+      fusion: 0.65,
+      outline: 2.0,
+      depth: 7.0,
+      glow: 0.15,
+      aberration: 0.06,
+      noise: 0.1
+    },
+    theme: {
+      accent: '#d946ef',
+      accentGlow: 'rgba(217, 70, 239, 0.55)',
+      accentTrack: 'rgba(217, 70, 239, 0.2)',
+      accentAmbient: 'rgba(217, 70, 239, 0.18)',
+      bg: '#09040e',
+      panelBg: 'linear-gradient(168deg, rgba(38, 16, 46, 0.94) 0%, rgba(24, 10, 32, 0.94) 42%, rgba(14, 5, 20, 0.97) 100%)',
+      panelBorder: 'rgba(217, 70, 239, 0.25)',
+      panelBorderTop: 'rgba(240, 140, 255, 0.5)',
+      readoutColor: '#f0abfc',
+      readoutBg: '#15051a',
+      tabActiveBg: 'linear-gradient(180deg, #591b68 0%, #3b0f47 50%, #24072d 100%)',
+      tabBorderTop: '#e879f9',
+      toggleActiveBg: 'linear-gradient(180deg, #591b68 0%, #3b0f47 50%, #24072d 100%)',
+      guideColor: 'rgba(217, 70, 239, 0.45)'
+    }
+  }
+};
+
+let currentVibe = 'Pink K-Pop';
+let pal = PAL[currentVibe];
+
+function applyVibe(name) {
+  if (!PAL[name]) return;
+  currentVibe = name;
+  const pData = PAL[name];
+  pal = pData;
+  
+  // 1. Sync dropdowns
+  const vibeSel = document.getElementById('vibeSel');
+  const palSel = document.getElementById('pal');
+  if (vibeSel && vibeSel.value !== name) vibeSel.value = name;
+  if (palSel && palSel.value !== name) palSel.value = name;
+  
+  const badge = document.getElementById('vibeBadge');
+  if (badge) badge.textContent = pData.badge || 'VIBE';
+
+  // 2. Apply tuned brush & FX parameters
+  if (pData.params) {
+    Object.entries(pData.params).forEach(([k, v]) => {
+      P[k] = v;
+      if (UI_INPUTS[k]) {
+        UI_INPUTS[k].input.value = v;
+        UI_INPUTS[k].span.textContent = v;
+      }
+    });
+  }
+
+  // 3. Apply whole-app UI theme
+  const t = pData.theme || {};
+  const rootStyle = document.documentElement.style;
+  if (t.accent) rootStyle.setProperty('--accent', t.accent);
+  if (t.accentGlow) rootStyle.setProperty('--accent-glow', t.accentGlow);
+  if (t.accentTrack) rootStyle.setProperty('--accent-track', t.accentTrack);
+  if (t.accentAmbient) rootStyle.setProperty('--accent-ambient', t.accentAmbient);
+  if (t.bg) {
+    rootStyle.setProperty('--bg', t.bg);
+    document.body.style.backgroundColor = t.bg;
+  }
+  if (t.panelBg) rootStyle.setProperty('--panel-bg', t.panelBg);
+  if (t.panelBorder) rootStyle.setProperty('--panel-border', t.panelBorder);
+  if (t.panelBorderTop) rootStyle.setProperty('--panel-border-top', t.panelBorderTop);
+  if (t.readoutColor) rootStyle.setProperty('--readout-color', t.readoutColor);
+  if (t.readoutBg) rootStyle.setProperty('--readout-bg', t.readoutBg);
+  if (t.tabActiveBg) rootStyle.setProperty('--tab-active-bg', t.tabActiveBg);
+  if (t.tabBorderTop) rootStyle.setProperty('--tab-border-top', t.tabBorderTop);
+  if (t.toggleActiveBg) rootStyle.setProperty('--toggle-active-bg', t.toggleActiveBg);
+  
+  // Update select arrow SVG color to match accent
+  if (t.accent) {
+    const hex = t.accent.replace('#', '');
+    const arrow = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23${hex}' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat calc(100% - 10px) center, linear-gradient(180deg, #282f3c 0%, #1c212c 50%, #131721 100%)`;
+    document.querySelectorAll('select').forEach(s => s.style.background = arrow);
+  }
+
+  // 4. Update shader background & trigger redraw
+  if (typeof U !== 'undefined' && U.uBg) {
+    U.uBg.value.set(...(pal.bg || [.027, .031, .047]));
+  }
+  if (typeof drawGuide === 'function') drawGuide();
+  if (typeof rebuildAll === 'function') rebuildAll();
+  dirty = true;
+}
+
+const sel = document.getElementById('pal');
+const vSel = document.getElementById('vibeSel');
+Object.keys(PAL).forEach(n => {
+  const optTitle = PAL[n].name || n;
+  if (sel) sel.add(new Option(optTitle, n));
+  if (vSel) vSel.add(new Option(optTitle, n));
+});
+if (sel) sel.onchange = () => applyVibe(sel.value);
+if (vSel) vSel.onchange = () => applyVibe(vSel.value);
+
+// ---------- renderer & targets ----------
+const PR = Math.min(window.devicePixelRatio || 1, 2);
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(PR);
+renderer.setClearColor(0x000000, 0);
+document.getElementById('stage').appendChild(renderer.domElement);
+const ex = renderer.extensions;
+const FT = (ex.has('EXT_color_buffer_float') || ex.has('EXT_color_buffer_half_float')) ? THREE.HalfFloatType : THREE.UnsignedByteType;
+const mk = (w, h, type) => new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type, depthBuffer: false, stencilBuffer: false });
+let maskRT, tmpRT, cmbRT, sceneRT, L = [], FS = .5, dirty = true;
+
+const scene = new THREE.Scene(), root = new THREE.Group(); scene.add(root);
+const camera = new THREE.OrthographicCamera(0, 1, 0, 1, -10, 10); // css pixels, y down
+const qs = new THREE.Scene(), qc = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const quad = new THREE.Mesh(new THREE.PlaneBufferGeometry(2, 2)); qs.add(quad);
+
+// Mask channels: R = chrome shape, G = outline shape (superset)
+const mOut = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide, depthTest: false, depthWrite: false });
+const mChr = new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide, depthTest: false, depthWrite: false });
+
+const VS = 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }';
+const blurMat = new THREE.ShaderMaterial({
+  uniforms: { t: { value: null }, dir: { value: new THREE.Vector2() }, sig: { value: 1 } }, vertexShader: VS,
+  fragmentShader: `uniform sampler2D t; uniform vec2 dir; uniform float sig; varying vec2 vUv;
+    void main(){ vec4 s=vec4(0.); float w=0.;
+      for(int i=-8;i<=8;i++){ float f=float(i)*.375; float k=exp(-.5*f*f); s+=k*texture2D(t,vUv+dir*f*sig); w+=k; }
+      gl_FragColor=s/w; }`
+});
+// Height = weighted sum of three blur scales (fine edge bevel + broad liquid domes)
+const cmbMat = new THREE.ShaderMaterial({
+  uniforms: { t1: { value: null }, t2: { value: null }, t3: { value: null } }, vertexShader: VS,
+  fragmentShader: `uniform sampler2D t1,t2,t3; varying vec2 vUv;
+    void main(){ vec4 a=texture2D(t1,vUv), b=texture2D(t2,vUv), c=texture2D(t3,vUv);
+      float h=1.2*a.r+2.3*b.r+3.4*c.r;
+      gl_FragColor=vec4(h*.1,b.r,b.g,1.); }`
+});
+const finalMat = new THREE.ShaderMaterial({
+  uniforms: { 
+    tMask: { value: null }, 
+    tF: { value: null }, 
+    uPx: { value: new THREE.Vector2() }, 
+    uFT: { value: new THREE.Vector2() }, 
+    uFS: { value: .5 }, 
+    uT: { value: 0 }, 
+    uBevel: { value: 3 }, 
+    uChisel: { value: 0.7 },
+    uThr: { value: -1 }, 
+    uPtr: { value: new THREE.Vector2() }, 
+    uSky: { value: new THREE.Vector3() }, 
+    uHor: { value: new THREE.Vector3() }, 
+    uBand: { value: new THREE.Vector3() }, 
+    uGround: { value: new THREE.Vector3() },
+    uBg: { value: new THREE.Vector3(.075, .022, .07) },
+    uIri: { value: 0 }, 
+    uDepth: { value: 6 } 
+  },
+  vertexShader: VS,
+  fragmentShader: `uniform sampler2D tMask,tF; uniform vec2 uPx,uFT,uPtr; uniform float uFS,uT,uBevel,uChisel,uThr,uIri; uniform vec3 uSky,uHor,uBand,uGround,uBg; varying vec2 vUv;
+    float H(vec2 u){
+      float h = texture2D(tF,u).r * 10.;
+      if (uChisel > 0.001) {
+        float nh = clamp(h * 0.15, 0.0, 1.0);
+        float peaked = pow(nh, mix(1.0, 0.52, uChisel)) / 0.15;
+        h = mix(h, peaked, uChisel);
+      }
+      return h;
+    }
+    vec3 env(vec3 r){
+      float x = r.x, y = r.y;
+      
+      // Bryce 3D Split Horizon: sharp contrast boundary between ground and sky
+      vec3 sky = mix(uHor * 0.65, uSky, smoothstep(0.0, 0.85, y));
+      vec3 ground = mix(uGround, vec3(0.008, 0.012, 0.02), smoothstep(0.0, -0.65, y));
+      
+      // Hard horizon line split (signature Bryce 3D / late 90s CGI)
+      float horizonCut = smoothstep(-0.012, 0.012, y);
+      vec3 c = mix(ground, sky, horizonCut);
+      
+      // Blinding white-hot razor horizon specular burn
+      float horFlash = exp(-abs(y) * 26.0) * 1.55;
+      c += uHor * horFlash;
+      
+      // Bryce reflective ground striations below the horizon (y < 0)
+      if (y < 0.0) {
+        float groundWave = smoothstep(0.35, 0.9, sin(x * 14.0 / (max(-y, 0.03) + 0.06) + 1.2));
+        c += uGround * 0.5 * groundWave * smoothstep(0.0, -0.12, y);
+      }
+      
+      // High-contrast studio softbox reflection bands in the sky (y > 0)
+      float bar1 = exp(-pow((y - 0.28) * 8.5, 2.0));
+      float bar2 = exp(-pow((y - 0.62) * 7.5, 2.0)) * smoothstep(-0.35, 0.45, x);
+      float bar3 = exp(-pow((y - 0.86) * 11.0, 2.0));
+      c += uBand * (bar1 * 0.95 + bar2 * 0.75 + bar3 * 0.5);
+      
+      // Classic geometric chrome light breaks
+      float w = smoothstep(0.80, 0.93, sin(x * 3.8 + y * 1.8 + 0.7));
+      float d = smoothstep(0.52, 0.82, sin(x * 2.4 - y * 3.1 + 2.0));
+      c = mix(c, vec3(1.0), w * 0.95);
+      c *= (1.0 - 0.8 * d * (1.0 - w));
+      
+      // Oil-slick / titanium anodized dispersion along reflection curvature
+      c += uIri * (0.5 + 0.5 * cos(6.28 * (vec3(0.0, 0.33, 0.67) + y * 1.1 + x * 0.45))) * (1.0 - w * 0.6);
+      return clamp(c, 0.0, 1.2);
+    }
+    void main(){
+      vec2 u=vUv, o=uPx*.5;
+      vec4 m=(texture2D(tMask,u+o)+texture2D(tMask,u-o)+texture2D(tMask,u+vec2(o.x,-o.y))+texture2D(tMask,u+vec2(-o.x,o.y)))*.25;
+      vec4 f=texture2D(tF,u);
+      float fa=uThr>0.?smoothstep(uThr-.025,uThr+.025,f.g):0.;
+      float fo=uThr>0.?smoothstep(uThr-.025,uThr+.025,f.b):0.;
+      float A=max(m.r,fa);
+      float O=max(max(m.g,fo),A);
+      
+      vec2 e=uFT;
+      float hC = H(u);
+      float hL = H(u - vec2(e.x, 0.));
+      float hR = H(u + vec2(e.x, 0.));
+      float hD = H(u - vec2(0., e.y));
+      float hU = H(u + vec2(0., e.y));
+      
+      float gx = (hR - hL) * uFS * 0.5;
+      float gy = (hU - hD) * uFS * 0.5;
+      vec2 g = vec2(gx, gy);
+      float gMag = length(g);
+      
+      // Chisel ridge facet calculation:
+      // Converts rounded balloon gradients into crisp planar knife-edge facets
+      if (uChisel > 0.001) {
+        vec2 gDir = gMag > 1e-4 ? g / gMag : vec2(0.0);
+        float facetSlope = mix(gMag, 0.52 * smoothstep(0.04, 0.35, hC), 0.75 * uChisel);
+        g = mix(g, gDir * facetSlope, uChisel);
+      }
+      
+      vec3 n = normalize(vec3(-g.x * uBevel, -g.y * uBevel, 1.0));
+      vec3 v = normalize(vec3((u-.5)*vec2(.9,.6), 1.));
+      vec3 r = reflect(-v, n);
+      
+      float a = uT * 0.35 + uPtr.x * 1.6;
+      float b = sin(uT * 0.23) * 0.7 + uPtr.y * 1.1;
+      r.xz = mat2(cos(a), -sin(a), sin(a), cos(a)) * r.xz;
+      r.yz = mat2(cos(b), -sin(b), sin(b), cos(b)) * r.yz;
+      
+      vec3 col = mix(vec3(0.01), env(r), smoothstep(0.05, 0.4, n.z));
+      
+      // Medial ridge specular glint along the knife-edge spine
+      if (uChisel > 0.001) {
+        float lap = (hL + hR + hD + hU - 4.0 * hC);
+        float spine = clamp(-lap * 2.8, 0.0, 1.0) * smoothstep(0.12, 0.5, hC);
+        col += uChisel * spine * (uHor * 0.8 + vec3(0.2));
+      }
+      
+      vec3 bg = uBg;
+      gl_FragColor = vec4(mix(bg, mix(vec3(.01), col, A), O), 1.);
+    }`
+});
+const B = blurMat.uniforms, C = cmbMat.uniforms, U = finalMat.uniforms;
+
+// 3D view: the same chrome shader on a plane displaced by the height field, lit from the orbit camera
+const solidMat = new THREE.ShaderMaterial({
+  uniforms: U, transparent: true, side: THREE.DoubleSide, depthWrite: false,
+  vertexShader: `uniform sampler2D tF; uniform float uDepth, uChisel; varying vec2 vUv; varying vec3 vView;
+    void main(){ 
+      vUv = uv; 
+      vec3 p = position; 
+      float rawH = texture2D(tF, uv).r * 10.;
+      float nh = clamp(rawH * 0.15, 0.0, 1.0);
+      float shapedH = mix(rawH, pow(nh, mix(1.0, 0.52, uChisel)) / 0.15, uChisel);
+      p.z = shapedH * uDepth;
+      vec4 wp = modelMatrix * vec4(p, 1.); 
+      vView = cameraPosition - wp.xyz; 
+      gl_Position = projectionMatrix * viewMatrix * wp; 
+    }`,
+  fragmentShader: finalMat.fragmentShader
+    .replace('varying vec2 vUv;', 'varying vec2 vUv; varying vec3 vView;')
+    .replace('vec3 v = normalize(vec3((u-.5)*vec2(.9,.6), 1.));', 'vec3 v = normalize(vView);')
+    .replace('gl_FragColor = vec4(mix(bg, mix(vec3(.01), col, A), O), 1.);', 'gl_FragColor = vec4(mix(vec3(.01), col, A), O);')
+});
+const scene3 = new THREE.Scene(), cam3 = new THREE.PerspectiveCamera(35, 1, 1, 20000);
+const plane = new THREE.Mesh(new THREE.PlaneBufferGeometry(1, 1), solidMat); plane.frustumCulled = false; scene3.add(plane);
+let D0 = 1000;
+
+// Nostalgic Y2K Star Glow & Chromatic Aberration Shader
+const starMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tScene: { value: null },
+    uPx: { value: new THREE.Vector2() },
+    uT: { value: 0 },
+    uGlow: { value: 0.8 },
+    uAberration: { value: 0.25 }
+  },
+  vertexShader: VS,
+  fragmentShader: `
+    uniform sampler2D tScene;
+    uniform vec2 uPx;
+    uniform float uT;
+    uniform float uGlow;
+    uniform float uAberration;
+    varying vec2 vUv;
+
+    // Chromatic dispersion sampling: red shifted outward, blue shifted inward
+    vec3 getSceneAb(vec2 uv) {
+      if (uAberration <= 0.001) return texture2D(tScene, uv).rgb;
+      vec2 dir = uv - 0.5;
+      float dist = length(dir);
+      vec2 disp = dir * (dist * 1.6 + 0.35) * (uAberration * 0.028);
+      float r = texture2D(tScene, uv + disp).r;
+      float g = texture2D(tScene, uv).g;
+      float b = texture2D(tScene, uv - disp).b;
+      return vec3(r, g, b);
+    }
+
+    vec3 getHi(vec2 uv) {
+      vec3 c = getSceneAb(uv);
+      float luma = dot(c, vec3(0.299, 0.587, 0.114));
+      float h = smoothstep(0.80, 0.96, luma);
+      return c * pow(h, 2.2);
+    }
+
+    void main() {
+      if (uGlow <= 0.001 && uAberration <= 0.001) {
+        gl_FragColor = vec4(texture2D(tScene, vUv).rgb, 1.0);
+        return;
+      }
+
+      vec3 base = getSceneAb(vUv);
+      if (uGlow <= 0.001) {
+        gl_FragColor = vec4(base, 1.0);
+        return;
+      }
+
+      // 4-point primary cross directions (angled slightly for authentic anime/CD cover glint)
+      vec2 dir1 = vec2(0.96, 0.28) * uPx;
+      vec2 dir2 = vec2(-0.28, 0.96) * uPx;
+      // 4-point secondary cross directions (45 deg offset)
+      vec2 dir3 = (dir1 + dir2) * 0.707;
+      vec2 dir4 = (dir1 - dir2) * 0.707;
+
+      vec3 starPrimary = vec3(0.0);
+      float wPrimary = 0.0;
+      for (int i = 1; i <= 9; i++) {
+        float fi = float(i);
+        float d = pow(fi, 1.45) * 3.2; // spans ~35 pixels out
+        float w = exp(-fi * 0.32);
+        
+        vec3 sA = getHi(vUv + dir1 * d) + getHi(vUv - dir1 * d);
+        vec3 sB = getHi(vUv + dir2 * d) + getHi(vUv - dir2 * d);
+        
+        vec3 prism = vec3(1.0 + sin(fi * 0.6) * 0.2, 1.0, 1.0 + cos(fi * 0.6) * 0.25);
+        starPrimary += (sA + sB) * w * prism;
+        wPrimary += w * 2.0;
+      }
+      starPrimary /= max(wPrimary, 0.001);
+
+      vec3 starSecondary = vec3(0.0);
+      float wSec = 0.0;
+      for (int i = 1; i <= 5; i++) {
+        float fi = float(i);
+        float d = pow(fi, 1.3) * 2.5;
+        float w = exp(-fi * 0.45);
+        vec3 sC = getHi(vUv + dir3 * d) + getHi(vUv - dir3 * d);
+        vec3 sD = getHi(vUv + dir4 * d) + getHi(vUv - dir4 * d);
+        starSecondary += (sC + sD) * w;
+        wSec += w * 2.0;
+      }
+      starSecondary /= max(wSec, 0.001);
+
+      // Central soft bloom corona
+      vec3 halo = vec3(0.0);
+      for (int j = 1; j <= 3; j++) {
+        float r = float(j) * 2.8;
+        halo += getHi(vUv + vec2(r, r) * uPx) +
+                getHi(vUv + vec2(-r, r) * uPx) +
+                getHi(vUv + vec2(r, -r) * uPx) +
+                getHi(vUv + vec2(-r, -r) * uPx);
+      }
+      halo *= 0.10;
+
+      // Twinkle & shimmer tied to time and spatial UV
+      float twinkle = 0.88 + 0.12 * sin(uT * 3.5 + dot(vUv, vec2(90.0, -70.0)));
+
+      // Composite starburst with screen blend onto base
+      vec3 glow = (starPrimary * 3.4 + starSecondary * 1.6 + halo * 1.8) * uGlow * twinkle;
+      vec3 result = 1.0 - (1.0 - base) * (1.0 - clamp(glow, 0.0, 1.0));
+
+      gl_FragColor = vec4(result, 1.0);
+    }
+  `
+});
+
+function pass(mat, target) { quad.material = mat; renderer.setRenderTarget(target); renderer.render(qs, qc); }
+function fields() {
+  renderer.setRenderTarget(maskRT); renderer.render(scene, camera);
+  const fw = tmpRT.width, fh = tmpRT.height; let src = maskRT.texture;
+  [3, 6, 12].forEach((s, k) => { // cascaded blur, sigma in css px
+    B.sig.value = s * FS;
+    B.t.value = src; B.dir.value.set(1 / fw, 0); pass(blurMat, tmpRT);
+    B.t.value = tmpRT.texture; B.dir.value.set(0, 1 / fh); pass(blurMat, L[k]);
+    src = L[k].texture;
+  });
+  C.t1.value = L[0].texture; C.t2.value = L[1].texture; C.t3.value = L[2].texture;
+  pass(cmbMat, cmbRT);
+}
+
+// ---------- path utilities ----------
+function smooth(p, it) {
+  for (let k = 0; k < it; k++) {
+    const q = [p[0]];
+    for (let i = 0; i < p.length - 1; i++) {
+      const a = p[i], b = p[i + 1];
+      q.push({ x: .75 * a.x + .25 * b.x, y: .75 * a.y + .25 * b.y, p: .75 * a.p + .25 * b.p }, { x: .25 * a.x + .75 * b.x, y: .25 * a.y + .75 * b.y, p: .25 * a.p + .75 * b.p });
+    }
+    q.push(p[p.length - 1]); p = q;
+  }
+  return p;
+}
+function resample(pts, step) {
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  const len = cum[cum.length - 1];
+  if (len < 1e-6) return [pts[0], pts[0]];
+  const n = Math.max(2, Math.floor(len / step) + 1), out = []; let j = 0;
+  for (let k = 0; k < n; k++) {
+    const s = len * k / (n - 1);
+    while (j < cum.length - 2 && cum[j + 1] < s) j++;
+    const t = Math.min(1, Math.max(0, (s - cum[j]) / (cum[j + 1] - cum[j] || 1))), a = pts[j], b = pts[j + 1];
+    out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, p: a.p + (b.p - a.p) * t });
+  }
+  return out;
+}
+
+// ---------- brush: width function (half-width) ----------
+// Pressure to width multiplier: mouse (always 0.5) stays 1, light pen touch gets thin, hard press doubles
+const pf = p => Math.max(.08, 1 + P.pressure * (2 * (p == null ? .5 : p) - 1));
+const s01 = x => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
+function widthAt(s, len) {
+  const env = s01(Math.min(s, len - s) / (8 + P.taper * 140)); // needle tips at both ends
+  return Math.max(.5, P.width * (.92 + .08 * Math.sin(s * .05)) * env) * .5;
+}
+
+// ---------- geometry (drawn into the mask) ----------
+function strip(pts, hw, mat) {
+  const n = pts.length, pos = new Float32Array(n * 6), idx = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(i - 1, 0)], b = pts[Math.min(i + 1, n - 1)];
+    const tx = b.x - a.x, ty = b.y - a.y, l = Math.hypot(tx, ty) || 1, nx = -ty / l * hw[i], ny = tx / l * hw[i];
+    pos.set([pts[i].x + nx, pts[i].y + ny, 0, pts[i].x - nx, pts[i].y - ny, 0], i * 6);
+    if (i < n - 1) { const A = 2 * i; idx.push(A, A + 2, A + 1, A + 1, A + 2, A + 3); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, mat); m.frustumCulled = false; return m;
+}
+function ribbon(pts, e, mat) {
+  const al = [0];
+  for (let i = 1; i < pts.length; i++) al.push(al[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  const len = al[al.length - 1];
+  return strip(pts, al.map((s, i) => widthAt(s, len) * pf(pts[i].p) + e), mat);
+}
+function spikeMesh(k, e, mat) {
+  const dx = (k.tx - k.bx) * P.spikeLen, dy = (k.ty - k.by) * P.spikeLen, tx = k.bx + dx, ty = k.by + dy;
+  if (Math.hypot(dx, dy) < 2) return new THREE.Group();
+  const sg = k.sg || 1, cx = k.bx + dx / 2 - dy * .12 * sg, cy = k.by + dy / 2 + dx * .12 * sg, pts = [], hw = [];
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20, m = 1 - t;
+    pts.push({ x: m * m * k.bx + 2 * m * t * cx + t * t * tx, y: m * m * k.by + 2 * m * t * cy + t * t * ty });
+    hw.push(P.width * .3 * (k.w || 1) * Math.pow(m, 1.3) + e);
+  }
+  return strip(pts, hw, mat);
+}
+function parts(s, e, mat, order) {
+  const out = [ribbon(s.pts, e, mat), ...s.spikes.map(k => spikeMesh(k, e, mat))];
+  out.forEach(m => m.renderOrder = order); return out;
+}
+
+// ---------- strokes ----------
+const strokes = []; let cur = null, drag = null, spikeMode = false;
+const ptr = { x: 0, y: 0, tx: 0, ty: 0 };
+let animOn = true, cursorOn = true, mode3d = false, autoOrbit = false, orbDrag = null, ot = 0;
+const orb = { y: 0, p: 0, z: 1 };
+
+// View Transform: Zoom & Pan
+const view = { x: 0, y: 0, scale: 1 };
+const getCanvasPos = (clientX, clientY) => ({
+  x: (clientX - view.x) / view.scale,
+  y: (clientY - view.y) / view.scale
+});
+
+function applyView() {
+  root.position.set(view.x, view.y, 0);
+  root.scale.set(view.scale, view.scale, 1);
+  drawGuide();
+  updateRefTransform();
+  const resetBtn = document.getElementById('btnZoomReset');
+  if (resetBtn) resetBtn.textContent = `${Math.round(view.scale * 100)}%`;
+  dirty = true;
+}
+
+function zoomAt(factor, cx, cy) {
+  const newScale = Math.max(0.2, Math.min(6.0, view.scale * factor));
+  const ratio = newScale / view.scale;
+  view.x = cx - (cx - view.x) * ratio;
+  view.y = cy - (cy - view.y) * ratio;
+  view.scale = newScale;
+  applyView();
+}
+
+function drop(s) {
+  if (s.group) { root.remove(s.group); s.group.traverse(o => o.geometry && o.geometry.dispose()); }
+  dirty = true;
+}
+function rebuild(s) {
+  drop(s);
+  const g = new THREE.Group();
+  if (s.raw.length > 1) {
+    s.pts = resample(smooth(s.raw, 3), 1.5);
+    for (const T of transforms()) {
+      const c = {
+        pts: s.pts.map(q => { const [x, y] = T.f(q.x, q.y); return { x, y, p: q.p }; }),
+        spikes: s.spikes.map(k => { const [bx, by] = T.f(k.bx, k.by), [tx, ty] = T.f(k.tx, k.ty); return { bx, by, tx, ty, w: k.w, sg: T.d }; })
+      };
+      if (P.outline > 0) parts(c, P.outline, mOut, 0).forEach(m => g.add(m));
+      parts(c, 0, mChr, 1).forEach(m => g.add(m));
+    }
+  }
+  s.group = g; root.add(g);
+}
+function rebuildAll() { strokes.forEach(rebuild); }
+// Symmetry: each transform is a copy of every stroke (d = -1 for reflections, so spike curls mirror too)
+function transforms() {
+  const cx = innerWidth / 2, cy = innerHeight / 2, m = symSel.value, I = { f: (x, y) => [x, y], d: 1 };
+  const mx = { f: (x, y) => [2 * cx - x, y], d: -1 }, my = { f: (x, y) => [x, 2 * cy - y], d: -1 }, mxy = { f: (x, y) => [2 * cx - x, 2 * cy - y], d: 1 };
+  if (m === 'Mirror X') return [I, mx];
+  if (m === 'Mirror Y') return [I, my];
+  if (m === 'Mirror X+Y') return [I, mx, my, mxy];
+  if (m.startsWith('Radial')) {
+    const n = +m.split(' ')[1];
+    return Array.from({ length: n }, (_, i) => { const a = i * 2 * Math.PI / n, c = Math.cos(a), s = Math.sin(a); return { f: (x, y) => [cx + (x - cx) * c - (y - cy) * s, cy + (x - cx) * s + (y - cy) * c], d: 1 }; });
+  }
+  return [I];
+}
+function nearest(x, y) {
+  const wp = getCanvasPos(x, y);
+  let best = null, bd = 40 / view.scale;
+  strokes.forEach(s => (s.pts || []).forEach(p => { 
+    const d = Math.hypot(p.x - wp.x, p.y - wp.y); 
+    if (d < bd) { bd = d; best = { s, x: p.x, y: p.y }; } 
+  }));
+  return best;
+}
+
+// ---------- input & gestures ----------
+const canvas = renderer.domElement;
+const activePointers = new Map();
+let pinchStartDist = 0, pinchStartScale = 1;
+let pinchCenter = { x: 0, y: 0 }, pinchStartPan = { x: 0, y: 0 };
+let isPanning = false, panStart = { x: 0, y: 0 };
+let isSpaceDown = false, panMode = false;
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !isSpaceDown && e.target.tagName !== 'INPUT') {
+    isSpaceDown = true;
+    if (!mode3d) canvas.style.cursor = 'grab';
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space') {
+    isSpaceDown = false;
+    if (!mode3d && !panMode) canvas.style.cursor = 'crosshair';
+  }
+});
+
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  // 2-finger pinch gesture
+  if (activePointers.size === 2 && !mode3d) {
+    if (cur) { strokes.pop(); drop(cur); cur = null; }
+    if (drag) { drag = null; }
+    const pts = Array.from(activePointers.values());
+    pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+    pinchStartScale = view.scale;
+    pinchCenter = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    pinchStartPan = { x: view.x, y: view.y };
+    return;
+  }
+  if (activePointers.size > 2) return;
+
+  // Spacebar pan / Pan tool mode
+  if (!mode3d && (isSpaceDown || panMode || e.button === 1)) {
+    isPanning = true;
+    panStart = { x: e.clientX - view.x, y: e.clientY - view.y };
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  if (mode3d) { orbDrag = { x: e.clientX, y: e.clientY }; return; }
+  if (spikeMode) {
+    const h = nearest(e.clientX, e.clientY); if (!h) return;
+    const wp = getCanvasPos(e.clientX, e.clientY);
+    const k = { bx: h.x, by: h.y, tx: wp.x, ty: wp.y };
+    h.s.spikes.push(k); drag = { s: h.s, k }; rebuild(h.s); return;
+  }
+  const p0 = getCanvasPos(e.clientX, e.clientY);
+  cur = { raw: [{ x: p0.x, y: p0.y, p: e.pressure }], spikes: [], group: null }; 
+  strokes.push(cur); rebuild(cur);
+});
+
+window.addEventListener('pointermove', e => {
+  ptr.tx = e.clientX / innerWidth * 2 - 1; ptr.ty = 1 - e.clientY / innerHeight * 2;
+  if (activePointers.has(e.pointerId)) {
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  }
+
+  // Active Pinch Zoom & Pan
+  if (activePointers.size === 2 && !mode3d) {
+    const pts = Array.from(activePointers.values());
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+    const currentCenter = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    const targetScale = Math.max(0.2, Math.min(6.0, pinchStartScale * (dist / pinchStartDist)));
+    const ratio = targetScale / pinchStartScale;
+    view.x = currentCenter.x - (pinchCenter.x - pinchStartPan.x) * ratio;
+    view.y = currentCenter.y - (pinchCenter.y - pinchStartPan.y) * ratio;
+    view.scale = targetScale;
+    applyView();
+    return;
+  }
+
+  if (isPanning) {
+    view.x = e.clientX - panStart.x;
+    view.y = e.clientY - panStart.y;
+    applyView();
+    return;
+  }
+
+  if (orbDrag) { orb.y = Math.max(-1.3, Math.min(1.3, orb.y - (e.clientX - orbDrag.x) * .006)); orb.p = Math.max(-1, Math.min(1, orb.p + (e.clientY - orbDrag.y) * .006)); orbDrag.x = e.clientX; orbDrag.y = e.clientY; return; }
+  if (drag) { 
+    const wp = getCanvasPos(e.clientX, e.clientY);
+    drag.k.tx = wp.x; drag.k.ty = wp.y; drag.k.w = pf(e.pressure); 
+    rebuild(drag.s); return; 
+  }
+  if (!cur) return;
+  const co = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  (co.length ? co : [e]).forEach(c => {
+    const wp = getCanvasPos(c.clientX, c.clientY);
+    const l = cur.raw[cur.raw.length - 1];
+    if (Math.hypot(wp.x - l.x, wp.y - l.y) < 2 / view.scale) return;
+    cur.raw.push({ x: wp.x, y: wp.y, p: c.pressure });
+  });
+  rebuild(cur);
+});
+
+const end = e => {
+  if (e && e.pointerId) activePointers.delete(e.pointerId);
+  if (isPanning) { 
+    isPanning = false; 
+    canvas.style.cursor = (isSpaceDown || panMode) ? 'grab' : (mode3d ? 'grab' : 'crosshair');
+    return; 
+  }
+  if (orbDrag) { orbDrag = null; return; }
+  if (drag) {
+    const { s, k } = drag;
+    if (Math.hypot(k.tx - k.bx, k.ty - k.by) < 8 / view.scale) { s.spikes = s.spikes.filter(q => q !== k); rebuild(s); }
+    drag = null; return;
+  }
+  if (cur && cur.raw.length < 2) { strokes.pop(); drop(cur); }
+  cur = null;
+};
+canvas.addEventListener('pointerup', end); 
+canvas.addEventListener('pointercancel', end);
+
+// Wheel Zoom & Pan
+canvas.addEventListener('wheel', e => {
+  if (mode3d) { 
+    e.preventDefault(); 
+    orb.z = Math.max(.4, Math.min(2.5, orb.z * (1 + e.deltaY * .001))); 
+    return; 
+  }
+  e.preventDefault();
+  // Trackpad pinch-to-zoom OR Ctrl/Cmd + wheel
+  if (e.ctrlKey || e.metaKey || isSpaceDown) {
+    const factor = Math.exp(-e.deltaY * 0.008);
+    zoomAt(factor, e.clientX, e.clientY);
+  } else if (e.shiftKey) {
+    view.x -= e.deltaY;
+    applyView();
+  } else {
+    // Smooth wheel zoom centered at cursor
+    const factor = e.deltaY < 0 ? 1.12 : 0.89;
+    zoomAt(factor, e.clientX, e.clientY);
+  }
+}, { passive: false });
+
+const undo = () => { const s = strokes.pop(); if (s) drop(s); cur = null; };
+document.getElementById('undo').onclick = undo;
+document.getElementById('clear').onclick = () => { strokes.splice(0).forEach(drop); cur = null; };
+document.getElementById('spike').onclick = e => {
+  spikeMode = !spikeMode; e.currentTarget.textContent = spikeMode ? 'Spike: on' : 'Spike mode';
+  e.currentTarget.classList.toggle('is-active', spikeMode);
+};
+
+// Zoom Bar Buttons
+document.getElementById('btnZoomIn').onclick = () => zoomAt(1.25, innerWidth / 2, innerHeight / 2);
+document.getElementById('btnZoomOut').onclick = () => zoomAt(0.8, innerWidth / 2, innerHeight / 2);
+document.getElementById('btnZoomReset').onclick = () => {
+  view.scale = 1; view.x = 0; view.y = 0;
+  applyView();
+};
+const btnPan = document.getElementById('btnPanMode');
+btnPan.onclick = () => {
+  panMode = !panMode;
+  btnPan.classList.toggle('is-active', panMode);
+  canvas.style.cursor = panMode ? 'grab' : (mode3d ? 'grab' : 'crosshair');
+};
+
+// ---------- Reference Image System ----------
+const refState = {
+  src: '',
+  naturalW: 0,
+  naturalH: 0,
+  x: innerWidth / 2,
+  y: innerHeight / 2,
+  scale: 1,
+  opacity: 0.4,
+  blend: 'normal',
+  visible: true
+};
+
+function updateRefTransform() {
+  const el = document.getElementById('ref-img');
+  if (!el || !refState.src) return;
+  const sx = view.x + refState.x * view.scale;
+  const sy = view.y + refState.y * view.scale;
+  const sc = view.scale * refState.scale;
+  el.style.transform = `translate(${sx}px, ${sy}px) scale(${sc})`;
+  el.style.opacity = refState.visible ? String(refState.opacity) : '0';
+  el.style.mixBlendMode = refState.blend;
+  el.style.display = refState.visible ? 'block' : 'none';
+}
+
+function loadRefImage(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = document.getElementById('ref-img');
+    const controls = document.getElementById('refControls');
+    img.onload = () => {
+      refState.src = ev.target.result;
+      refState.naturalW = img.naturalWidth;
+      refState.naturalH = img.naturalHeight;
+      // Auto-scale to fit comfortably
+      const maxDim = Math.max(img.naturalWidth, img.naturalHeight);
+      const targetDim = Math.min(innerWidth, innerHeight) * 0.65;
+      refState.scale = maxDim > targetDim ? +(targetDim / maxDim).toFixed(2) : 1;
+      // Center in canvas coordinates
+      refState.x = innerWidth / 2 - (img.naturalWidth * refState.scale) / 2;
+      refState.y = innerHeight / 2 - (img.naturalHeight * refState.scale) / 2;
+      
+      const scInput = document.getElementById('refScale');
+      if (scInput) scInput.value = refState.scale;
+      const scVal = document.getElementById('refScaleVal');
+      if (scVal) scVal.textContent = `${refState.scale}x`;
+
+      refState.visible = true;
+      if (controls) controls.style.display = 'block';
+      const hint = document.getElementById('refEmptyHint');
+      if (hint) hint.style.display = 'none';
+      updateRefTransform();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+const refFile = document.getElementById('refFile');
+document.getElementById('btnLoadRef').onclick = () => refFile.click();
+refFile.onchange = () => { if (refFile.files[0]) loadRefImage(refFile.files[0]); };
+
+// Paste & Drag-Drop Reference Image
+window.addEventListener('paste', e => {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) loadRefImage(file);
+      break;
+    }
+  }
+});
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer?.files?.[0];
+  if (file && file.type.startsWith('image/')) loadRefImage(file);
+});
+
+// Reference Controls Binding
+const refOpInput = document.getElementById('refOpacity');
+const refOpVal = document.getElementById('refOpVal');
+refOpInput.oninput = () => {
+  refState.opacity = +refOpInput.value;
+  refOpVal.textContent = `${Math.round(refState.opacity * 100)}%`;
+  updateRefTransform();
+};
+
+const refScInput = document.getElementById('refScale');
+const refScVal = document.getElementById('refScaleVal');
+refScInput.oninput = () => {
+  const oldScale = refState.scale;
+  refState.scale = +refScInput.value;
+  refScVal.textContent = `${refState.scale.toFixed(2)}x`;
+  // Adjust x,y to zoom around center of image
+  const cx = refState.x + (refState.naturalW * oldScale) / 2;
+  const cy = refState.y + (refState.naturalH * oldScale) / 2;
+  refState.x = cx - (refState.naturalW * refState.scale) / 2;
+  refState.y = cy - (refState.naturalH * refState.scale) / 2;
+  updateRefTransform();
+};
+
+const refBlendSel = document.getElementById('refBlend');
+refBlendSel.onchange = () => {
+  refState.blend = refBlendSel.value;
+  updateRefTransform();
+};
+
+document.getElementById('btnRefCenter').onclick = () => {
+  const img = document.getElementById('ref-img');
+  if (img && refState.src) {
+    refState.x = innerWidth / 2 - (refState.naturalW * refState.scale) / 2;
+    refState.y = innerHeight / 2 - (refState.naturalH * refState.scale) / 2;
+    updateRefTransform();
+  }
+};
+
+const btnRefToggle = document.getElementById('btnRefToggle');
+btnRefToggle.onclick = () => {
+  refState.visible = !refState.visible;
+  btnRefToggle.textContent = refState.visible ? 'Hide' : 'Show';
+  updateRefTransform();
+};
+
+document.getElementById('btnRefClear').onclick = () => {
+  refState.src = '';
+  const img = document.getElementById('ref-img');
+  if (img) img.src = '';
+  document.getElementById('refControls').style.display = 'none';
+  const hint = document.getElementById('refEmptyHint');
+  if (hint) hint.style.display = 'block';
+  refFile.value = '';
+  updateRefTransform();
+};
+
+// ---------- symmetry, toggles, 3D controls ----------
+const symSel = document.getElementById('sym'), guide = document.getElementById('guide');
+['Off', 'Mirror X', 'Mirror Y', 'Mirror X+Y', 'Radial 3', 'Radial 4', 'Radial 6', 'Radial 8'].forEach(n => symSel.add(new Option(n, n)));
+function drawGuide() {
+  const w = innerWidth, h = innerHeight, m = symSel.value; let s = '';
+  const L = (a, b, c, d) => `<line x1='${a}' y1='${b}' x2='${c}' y2='${d}'/>`;
+  if (m === 'Mirror X' || m === 'Mirror X+Y') s += L(w / 2, -10000, w / 2, 10000);
+  if (m === 'Mirror Y' || m === 'Mirror X+Y') s += L(-10000, h / 2, 10000, h / 2);
+  if (m.startsWith('Radial')) { 
+    const n = +m.split(' ')[1]; 
+    for (let i = 0; i < n; i++) { 
+      const a = i * 2 * Math.PI / n - Math.PI / 2; 
+      s += L(w / 2, h / 2, w / 2 + Math.cos(a) * 90, h / 2 + Math.sin(a) * 90); 
+    } 
+  }
+  const strokeColor = (pal && pal.theme && pal.theme.guideColor) ? pal.theme.guideColor : 'rgba(127,182,255,.4)';
+  guide.innerHTML = `<g transform="translate(${view.x}, ${view.y}) scale(${view.scale})"><g stroke='${strokeColor}' stroke-dasharray='4 6'>${s}</g></g>`;
+  guide.style.display = mode3d ? 'none' : '';
+}
+symSel.onchange = () => { drawGuide(); rebuildAll(); };
+function toggle(id, label, init, fn) {
+  const b = document.getElementById(id); let v = init;
+  const set = () => { b.textContent = `${label}: ${v ? 'on' : 'off'}`; b.classList.toggle('is-active', v); };
+  b.onclick = () => { v = !v; fn(v); set(); }; set();
+}
+toggle('bAnim', 'Animation', true, v => animOn = v);
+toggle('bCur', 'Cursor FX', true, v => cursorOn = v);
+toggle('b3d', '3D view', false, v => { mode3d = v; canvas.style.cursor = v ? 'grab' : 'crosshair'; drawGuide(); });
+toggle('bOrb', 'Auto orbit', false, v => autoOrbit = v);
+
+// ---------- sizing & loop ----------
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h); camera.right = w; camera.bottom = h; camera.updateProjectionMatrix();
+  const mw = Math.round(w * PR), mh = Math.round(h * PR), fw = Math.max(2, mw >> 1), fh = Math.max(2, mh >> 1);
+  [maskRT, tmpRT, cmbRT, sceneRT, ...L].forEach(r => r && r.dispose());
+  maskRT = mk(mw, mh, THREE.UnsignedByteType); tmpRT = mk(fw, fh, FT); cmbRT = mk(fw, fh, FT); sceneRT = mk(mw, mh, FT); L = [0, 1, 2].map(() => mk(fw, fh, FT));
+  FS = fw / w; U.uPx.value.set(1 / mw, 1 / mh); U.uFT.value.set(1 / fw, 1 / fh); U.uFS.value = FS;
+  cam3.aspect = w / h; cam3.updateProjectionMatrix(); D0 = (h / 2) / Math.tan(cam3.fov * Math.PI / 360);
+  plane.geometry.dispose(); plane.geometry = new THREE.PlaneBufferGeometry(w, h, Math.min(480, Math.round(w / 3)), Math.min(480, Math.round(h / 3)));
+  drawGuide(); updateRefTransform(); if (symSel.value !== 'Off') rebuildAll();
+  dirty = true;
+}
+window.addEventListener('resize', resize); resize();
+applyVibe('Pink K-Pop');
+
+let t = 0, last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, .1); last = now; t += animOn ? dt * P.speed : 0;
+  ptr.x += ((cursorOn ? ptr.tx : 0) - ptr.x) * .08; ptr.y += ((cursorOn ? ptr.ty : 0) - ptr.y) * .08;
+  if (dirty) { fields(); dirty = false; }
+  U.tMask.value = maskRT.texture; U.tF.value = cmbRT.texture;
+  U.uT.value = t; 
+  U.uSky.value.set(...pal.sky); 
+  U.uHor.value.set(...pal.hor); 
+  U.uBand.value.set(...pal.band); 
+  U.uGround.value.set(...(pal.ground || [0.04, 0.05, 0.08]));
+  U.uBg.value.set(...(pal.bg || [0.027, 0.031, 0.047]));
+  U.uIri.value = P.iri + (pal.iri || 0); 
+  U.uBevel.value = P.bevel; 
+  U.uChisel.value = P.chisel !== undefined ? P.chisel : 0.7;
+  U.uThr.value = P.fusion > 0 ? .5 - .3 * P.fusion : -1; 
+  U.uPtr.value.set(ptr.x, ptr.y);
+  
+  const glowVal = P.glow !== undefined ? P.glow : 0.15;
+  const abVal = P.aberration !== undefined ? P.aberration : 0.06;
+  const mw = renderer.domElement.width, mh = renderer.domElement.height;
+  if ((glowVal > 0.001 || abVal > 0.001) && sceneRT) {
+    if (mode3d) {
+      if (autoOrbit) { ot += dt * .5; orb.y = Math.sin(ot); orb.p = .35 * Math.sin(ot * .7); }
+      const d = D0 * orb.z, cp = Math.cos(orb.p);
+      cam3.position.set(d * Math.sin(orb.y) * cp, d * Math.sin(orb.p), d * Math.cos(orb.y) * cp); cam3.lookAt(0, 0, 0);
+      U.uDepth.value = P.depth; 
+      renderer.setRenderTarget(sceneRT); 
+      renderer.render(scene3, cam3);
+    } else {
+      pass(finalMat, sceneRT);
+    }
+    starMat.uniforms.tScene.value = sceneRT.texture;
+    starMat.uniforms.uPx.value.set(1 / mw, 1 / mh);
+    starMat.uniforms.uT.value = t;
+    starMat.uniforms.uGlow.value = glowVal;
+    starMat.uniforms.uAberration.value = abVal;
+    pass(starMat, null);
+  } else {
+    if (mode3d) {
+      if (autoOrbit) { ot += dt * .5; orb.y = Math.sin(ot); orb.p = .35 * Math.sin(ot * .7); }
+      const d = D0 * orb.z, cp = Math.cos(orb.p);
+      cam3.position.set(d * Math.sin(orb.y) * cp, d * Math.sin(orb.p), d * Math.cos(orb.y) * cp); cam3.lookAt(0, 0, 0);
+      U.uDepth.value = P.depth; 
+      renderer.setRenderTarget(null); 
+      renderer.render(scene3, cam3);
+    } else {
+      pass(finalMat, null);
+    }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---------- Export System: High-Res Images & 3D Models (Commented out) ----------
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1200);
+}
+
+function getStrokesBounds() {
+  const ts = transforms();
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let count = 0;
+  
+  strokes.forEach(s => {
+    const pts = s.pts || [];
+    const spk = s.spikes || [];
+    ts.forEach(T => {
+      pts.forEach(p => {
+        const [x, y] = T.f(p.x, p.y);
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        count++;
+      });
+      spk.forEach(k => {
+        const [bx, by] = T.f(k.bx, k.by);
+        const [tx, ty] = T.f(k.tx, k.ty);
+        if (bx < minX) minX = bx; if (bx > maxX) maxX = bx;
+        if (by < minY) minY = by; if (by > maxY) maxY = by;
+        if (tx < minX) minX = tx; if (tx > maxX) maxX = tx;
+        if (ty < minY) minY = ty; if (ty > maxY) maxY = ty;
+        count += 2;
+      });
+    });
+  });
+
+  if (count === 0 || !isFinite(minX)) {
+    return {
+      minX: 0, minY: 0, maxX: innerWidth, maxY: innerHeight,
+      width: innerWidth, height: innerHeight,
+      cx: innerWidth / 2, cy: innerHeight / 2,
+      empty: true
+    };
+  }
+
+  const pad = (P.width || 14) + (P.outline || 2) + 24;
+  minX -= pad; maxX += pad;
+  minY -= pad; maxY += pad;
+
+  return {
+    minX, minY, maxX, maxY,
+    width: Math.max(20, maxX - minX),
+    height: Math.max(20, maxY - minY),
+    cx: (minX + maxX) / 2,
+    cy: (minY + maxY) / 2,
+    empty: false
+  };
+}
+
+function applyAnalogFXToCanvas(ctx, w, h, intensity) {
+  // Analog film grain overlay
+  const grainCvs = document.createElement('canvas');
+  const gw = 256, gh = 256;
+  grainCvs.width = gw; grainCvs.height = gh;
+  const gctx = grainCvs.getContext('2d');
+  const gdata = gctx.createImageData(gw, gh);
+  const gd = gdata.data;
+  for (let i = 0; i < gd.length; i += 4) {
+    const v = Math.floor(Math.random() * 255);
+    gd[i] = v; gd[i+1] = v; gd[i+2] = v;
+    gd[i+3] = Math.floor(Math.min(1.0, intensity * 1.5) * 110);
+  }
+  gctx.putImageData(gdata, 0, 0);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'overlay';
+  const pat = ctx.createPattern(grainCvs, 'repeat');
+  ctx.fillStyle = pat;
+  ctx.fillRect(0, 0, w, h);
+
+  // Subtle analog scanlines
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+  for (let y = 0; y < h; y += 4) {
+    ctx.fillRect(0, y, w, 1);
+  }
+  ctx.restore();
+}
+
+function exportImage(isTransparentPNG) {
+  const statusEl = document.getElementById('exportStatus');
+  const aspectChoice = document.getElementById('expAspect').value;
+  const maxDim = parseInt(document.getElementById('expRes').value, 10) || 2048;
+  const framing = document.getElementById('expFraming').value;
+
+  let targetW = maxDim, targetH = maxDim;
+  if (aspectChoice === '1:1') {
+    targetW = maxDim; targetH = maxDim;
+  } else if (aspectChoice === '4:5') {
+    targetW = Math.round(maxDim * (4 / 5)); targetH = maxDim;
+  } else if (aspectChoice === '9:16') {
+    targetW = Math.round(maxDim * (9 / 16)); targetH = maxDim;
+  } else if (aspectChoice === '16:9') {
+    targetW = maxDim; targetH = Math.round(maxDim * (9 / 16));
+  } else if (aspectChoice === '4:3') {
+    targetW = maxDim; targetH = Math.round(maxDim * (3 / 4));
+  } else if (aspectChoice === 'auto') {
+    const screenAspect = innerWidth / innerHeight;
+    if (screenAspect >= 1) {
+      targetW = maxDim; targetH = Math.round(maxDim / screenAspect);
+    } else {
+      targetH = maxDim; targetW = Math.round(maxDim * screenAspect);
+    }
+  }
+
+  // Ensure dimensions are even numbers
+  if (targetW % 2 !== 0) targetW++;
+  if (targetH % 2 !== 0) targetH++;
+
+  const formatName = isTransparentPNG ? 'PNG' : 'JPEG';
+  if (statusEl) statusEl.textContent = `Rendering ${targetW}x${targetH} ${formatName}...`;
+
+  requestAnimationFrame(() => {
+    try {
+      const expCam = new THREE.OrthographicCamera(0, 1, 0, 1, -10, 10);
+      const bounds = getStrokesBounds();
+
+      const oldRootPos = root.position.clone();
+      const oldRootScale = root.scale.clone();
+
+      if (framing === 'fit' && !bounds.empty) {
+        root.position.set(0, 0, 0);
+        root.scale.set(1, 1, 1);
+
+        const margin = 1.25;
+        let spanW = bounds.width * margin;
+        let spanH = bounds.height * margin;
+        const targetAspect = targetW / targetH;
+
+        if (spanW / spanH > targetAspect) {
+          spanH = spanW / targetAspect;
+        } else {
+          spanW = spanH * targetAspect;
+        }
+
+        expCam.left = bounds.cx - spanW / 2;
+        expCam.right = bounds.cx + spanW / 2;
+        expCam.top = bounds.cy - spanH / 2;
+        expCam.bottom = bounds.cy + spanH / 2;
+      } else {
+        expCam.left = (0 - view.x) / view.scale;
+        expCam.right = (innerWidth - view.x) / view.scale;
+        expCam.top = (0 - view.y) / view.scale;
+        expCam.bottom = (innerHeight - view.y) / view.scale;
+        root.position.set(0, 0, 0);
+        root.scale.set(1, 1, 1);
+      }
+      expCam.updateProjectionMatrix();
+
+      const expFw = Math.max(2, targetW >> 1);
+      const expFh = Math.max(2, targetH >> 1);
+
+      const expMaskRT = mk(targetW, targetH, THREE.UnsignedByteType);
+      const expTmpRT = mk(expFw, expFh, FT);
+      const expCmbRT = mk(expFw, expFh, FT);
+      const expL = [mk(expFw, expFh, FT), mk(expFw, expFh, FT), mk(expFw, expFh, FT)];
+      const expSceneRT = mk(targetW, targetH, FT);
+      const expFinalRT = mk(targetW, targetH, THREE.UnsignedByteType);
+
+      // Render mask
+      renderer.setRenderTarget(expMaskRT);
+      renderer.clear();
+      renderer.render(scene, expCam);
+
+      // Blur passes
+      const camSpanW = expCam.right - expCam.left;
+      const expFS = expFw / camSpanW;
+      let expSrc = expMaskRT.texture;
+      [3, 6, 12].forEach((s, k) => {
+        B.sig.value = s * expFS;
+        B.t.value = expSrc; B.dir.value.set(1 / expFw, 0); pass(blurMat, expTmpRT);
+        B.t.value = expTmpRT.texture; B.dir.value.set(0, 1 / expFh); pass(blurMat, expL[k]);
+        expSrc = expL[k].texture;
+      });
+      C.t1.value = expL[0].texture; C.t2.value = expL[1].texture; C.t3.value = expL[2].texture;
+      pass(cmbMat, expCmbRT);
+
+      // Final pass setup
+      U.tMask.value = expMaskRT.texture;
+      U.tF.value = expCmbRT.texture;
+      U.uPx.value.set(1 / targetW, 1 / targetH);
+      U.uFT.value.set(1 / expFw, 1 / expFh);
+      U.uFS.value = expFS;
+      U.uAlphaBg.value = isTransparentPNG ? 0.0 : 1.0;
+
+      const glowVal = P.glow !== undefined ? P.glow : 0.15;
+      const abVal = P.aberration !== undefined ? P.aberration : 0.06;
+
+      if (!isTransparentPNG && (glowVal > 0.001 || abVal > 0.001)) {
+        pass(finalMat, expSceneRT);
+        starMat.uniforms.tScene.value = expSceneRT.texture;
+        starMat.uniforms.uPx.value.set(1 / targetW, 1 / targetH);
+        starMat.uniforms.uT.value = t;
+        starMat.uniforms.uGlow.value = glowVal;
+        starMat.uniforms.uAberration.value = abVal;
+        pass(starMat, expFinalRT);
+      } else {
+        pass(finalMat, expFinalRT);
+      }
+
+      // Read pixels back
+      const pixels = new Uint8Array(targetW * targetH * 4);
+      renderer.readRenderTargetPixels(expFinalRT, 0, 0, targetW, targetH, pixels);
+
+      // Restore live state
+      root.position.copy(oldRootPos);
+      root.scale.copy(oldRootScale);
+      U.tMask.value = maskRT.texture;
+      U.tF.value = cmbRT.texture;
+      U.uPx.value.set(1 / renderer.domElement.width, 1 / renderer.domElement.height);
+      U.uFT.value.set(1 / tmpRT.width, 1 / tmpRT.height);
+      U.uFS.value = FS;
+      U.uAlphaBg.value = 1.0;
+      dirty = true;
+
+      // Clean up export RTs
+      [expMaskRT, expTmpRT, expCmbRT, ...expL, expSceneRT, expFinalRT].forEach(r => r.dispose());
+
+      // Create 2D Canvas and Flip Y
+      const outCvs = document.createElement('canvas');
+      outCvs.width = targetW;
+      outCvs.height = targetH;
+      const ctx = outCvs.getContext('2d');
+      const imgData = ctx.createImageData(targetW, targetH);
+      const data = imgData.data;
+
+      for (let y = 0; y < targetH; y++) {
+        const srcRow = (targetH - 1 - y) * targetW * 4;
+        const dstRow = y * targetW * 4;
+        data.set(pixels.subarray(srcRow, srcRow + targetW * 4), dstRow);
+      }
+      ctx.putImageData(imgData, 0, 0);
+
+      // If JPEG, apply analog grain, dust, and scanlines overlay matching live effect
+      if (!isTransparentPNG && (P.noise === undefined || P.noise > 0.01)) {
+        applyAnalogFXToCanvas(ctx, targetW, targetH, P.noise !== undefined ? P.noise : 0.1);
+      }
+
+      // Trigger download
+      const vibeBadgeEl = document.getElementById('vibeBadge');
+      const vibeSlug = (vibeBadgeEl ? vibeBadgeEl.textContent : 'y2k').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      const filename = `y2k-tribal-${vibeSlug}-${targetW}x${targetH}-${isTransparentPNG ? 'transparent' : 'art'}-${ts}.${isTransparentPNG ? 'png' : 'jpg'}`;
+
+      outCvs.toBlob(blob => {
+        if (!blob) {
+          if (statusEl) statusEl.textContent = 'Export failed (no blob)';
+          return;
+        }
+        downloadBlob(blob, filename);
+        if (statusEl) statusEl.textContent = `Saved ${filename}`;
+      }, isTransparentPNG ? 'image/png' : 'image/jpeg', 0.96);
+
+    } catch (err) {
+      console.error('Export error:', err);
+      if (statusEl) statusEl.textContent = 'Error: ' + err.message;
+    }
+  });
+}
+
+// 1-pass shader to extract normalized shaped height from HalfFloat RT to UnsignedByte RT
+const heightExtractMat = new THREE.ShaderMaterial({
+  uniforms: { tF: { value: null }, uChisel: { value: 0.7 } },
+  vertexShader: VS,
+  fragmentShader: `
+    uniform sampler2D tF; uniform float uChisel; varying vec2 vUv;
+    void main() {
+      float rawH = texture2D(tF, vUv).r * 10.0;
+      float nh = clamp(rawH * 0.15, 0.0, 1.0);
+      float shapedH = mix(rawH, pow(nh, mix(1.0, 0.52, uChisel)) / 0.15, uChisel);
+      float norm = clamp(shapedH / 8.0, 0.0, 1.0);
+      gl_FragColor = vec4(norm, norm, norm, 1.0);
+    }
+  `
+});
+
+function createBinarySTL(positions, indices) {
+  const numTris = indices.length / 3;
+  const buffer = new ArrayBuffer(84 + numTris * 50);
+  const view = new DataView(buffer);
+
+  // 80-byte header string
+  const headerStr = 'Binary STL - Y2K Chrome Tribal Brush Watertight Solid';
+  for (let i = 0; i < 80; i++) {
+    view.setUint8(i, i < headerStr.length ? headerStr.charCodeAt(i) : 0);
+  }
+  // 4-byte triangle count
+  view.setUint32(80, numTris, true);
+
+  let offset = 84;
+  const p = positions;
+
+  for (let i = 0; i < indices.length; i += 3) {
+    const i0 = indices[i] * 3;
+    const i1 = indices[i + 1] * 3;
+    const i2 = indices[i + 2] * 3;
+
+    const ax = p[i0], ay = p[i0 + 1], az = p[i0 + 2];
+    const bx = p[i1], by = p[i1 + 1], bz = p[i1 + 2];
+    const cx = p[i2], cy = p[i2 + 1], cz = p[i2 + 2];
+
+    // Compute facet normal: (B - A) x (C - A)
+    const abx = bx - ax, aby = by - ay, abz = bz - az;
+    const acx = cx - ax, acy = cy - ay, acz = cz - az;
+    let nx = aby * acz - abz * acy;
+    let ny = abz * acx - abx * acz;
+    let nz = abx * acy - aby * acx;
+    const len = Math.hypot(nx, ny, nz) || 1;
+    nx /= len; ny /= len; nz /= len;
+
+    // Normal
+    view.setFloat32(offset, nx, true); offset += 4;
+    view.setFloat32(offset, ny, true); offset += 4;
+    view.setFloat32(offset, nz, true); offset += 4;
+
+    // Vertex 1
+    view.setFloat32(offset, ax, true); offset += 4;
+    view.setFloat32(offset, ay, true); offset += 4;
+    view.setFloat32(offset, az, true); offset += 4;
+
+    // Vertex 2
+    view.setFloat32(offset, bx, true); offset += 4;
+    view.setFloat32(offset, by, true); offset += 4;
+    view.setFloat32(offset, bz, true); offset += 4;
+
+    // Vertex 3
+    view.setFloat32(offset, cx, true); offset += 4;
+    view.setFloat32(offset, cy, true); offset += 4;
+    view.setFloat32(offset, cz, true); offset += 4;
+
+    // Attribute byte count (uint16 = 0)
+    view.setUint16(offset, 0, true); offset += 2;
+  }
+
+  return new Blob([buffer], { type: 'application/octet-stream' });
+}
+
+function export3DModel(format) {
+  const statusEl = document.getElementById('exportStatus');
+  const baseStyle = document.getElementById('exp3dBase').value; // 'solid' or 'surface'
+  const isSolid = baseStyle === 'solid';
+  const gridRes = parseInt(document.getElementById('exp3dRes').value, 10) || 256;
+
+  if (statusEl) statusEl.textContent = `Generating 3D ${format.toUpperCase()} (${gridRes}x${gridRes})...`;
+
+  requestAnimationFrame(() => {
+    try {
+      const bounds = getStrokesBounds();
+      const oldRootPos = root.position.clone();
+      const oldRootScale = root.scale.clone();
+
+      root.position.set(0, 0, 0);
+      root.scale.set(1, 1, 1);
+
+      // Frame tight around artwork with 10% breathing room
+      const margin = 1.15;
+      const spanW = bounds.width * margin;
+      const spanH = bounds.height * margin;
+
+      const expCam = new THREE.OrthographicCamera(
+        bounds.cx - spanW / 2, bounds.cx + spanW / 2,
+        bounds.cy - spanH / 2, bounds.cy + spanH / 2,
+        -10, 10
+      );
+      expCam.updateProjectionMatrix();
+
+      // Render mask and height field at grid resolution
+      const M = gridRes, N = Math.max(32, Math.round(gridRes * (spanH / spanW)));
+      const gridW = M, gridH = N;
+
+      const expMaskRT = mk(gridW, gridH, THREE.UnsignedByteType);
+      const expTmpRT = mk(gridW, gridH, FT);
+      const expCmbRT = mk(gridW, gridH, FT);
+      const expL = [mk(gridW, gridH, FT), mk(gridW, gridH, FT), mk(gridW, gridH, FT)];
+      const expHeightRT = mk(gridW, gridH, THREE.UnsignedByteType);
+
+      renderer.setRenderTarget(expMaskRT);
+      renderer.clear();
+      renderer.render(scene, expCam);
+
+      const expFS = gridW / spanW;
+      let expSrc = expMaskRT.texture;
+      [3, 6, 12].forEach((s, k) => {
+        B.sig.value = s * expFS;
+        B.t.value = expSrc; B.dir.value.set(1 / gridW, 0); pass(blurMat, expTmpRT);
+        B.t.value = expTmpRT.texture; B.dir.value.set(0, 1 / gridH); pass(blurMat, expL[k]);
+        expSrc = expL[k].texture;
+      });
+      C.t1.value = expL[0].texture; C.t2.value = expL[1].texture; C.t3.value = expL[2].texture;
+      pass(cmbMat, expCmbRT);
+
+      // Extract normalized height to unsigned byte RT
+      heightExtractMat.uniforms.tF.value = expCmbRT.texture;
+      heightExtractMat.uniforms.uChisel.value = P.chisel !== undefined ? P.chisel : 0.7;
+      pass(heightExtractMat, expHeightRT);
+
+      // Read pixels back
+      const heightPixels = new Uint8Array(gridW * gridH * 4);
+      renderer.readRenderTargetPixels(expHeightRT, 0, 0, gridW, gridH, heightPixels);
+
+      // Restore live state
+      root.position.copy(oldRootPos);
+      root.scale.copy(oldRootScale);
+      U.tMask.value = maskRT.texture;
+      U.tF.value = cmbRT.texture;
+      U.uPx.value.set(1 / renderer.domElement.width, 1 / renderer.domElement.height);
+      U.uFT.value.set(1 / tmpRT.width, 1 / tmpRT.height);
+      U.uFS.value = FS;
+      dirty = true;
+
+      // Dispose offscreen RTs
+      [expMaskRT, expTmpRT, expCmbRT, ...expL, expHeightRT].forEach(r => r.dispose());
+
+      // Normalized height array (0.0 to 1.0) with WebGL Y-flip accounted for
+      const normH = new Float32Array(gridW * gridH);
+      for (let j = 0; j < gridH; j++) {
+        const srcRow = (gridH - 1 - j) * gridW * 4;
+        for (let i = 0; i < gridW; i++) {
+          normH[j * gridW + i] = heightPixels[srcRow + i * 4] / 255.0;
+        }
+      }
+
+      // Generate 3D Mesh
+      // Standard printable scale: 100mm width, proportional height, 10mm max relief
+      const realW = 100.0;
+      const realH = realW * (spanH / spanW);
+      const depthScale = 12.0 * ((P.depth !== undefined ? P.depth : 6) / 6.0);
+      const baseThickness = 2.5; // mm baseplate thickness for watertight solid
+
+      const positions = [];
+      const indices = [];
+      const uvs = [];
+
+      // Top surface vertices
+      for (let j = 0; j < gridH; j++) {
+        for (let i = 0; i < gridW; i++) {
+          const u = i / (gridW - 1);
+          const v = j / (gridH - 1);
+          const x = (u - 0.5) * realW;
+          const y = (0.5 - v) * realH;
+          const z = (isSolid ? baseThickness : 0.0) + normH[j * gridW + i] * depthScale;
+          positions.push(x, y, z);
+          uvs.push(u, 1.0 - v);
+        }
+      }
+
+      // Top surface triangles
+      for (let j = 0; j < gridH - 1; j++) {
+        for (let i = 0; i < gridW - 1; i++) {
+          const p00 = j * gridW + i;
+          const p10 = j * gridW + i + 1;
+          const p01 = (j + 1) * gridW + i;
+          const p11 = (j + 1) * gridW + i + 1;
+          indices.push(p00, p10, p11);
+          indices.push(p00, p11, p01);
+        }
+      }
+
+      // If solid plinth mode: build bottom plate and 4 perimeter walls
+      if (isSolid) {
+        const offset = gridW * gridH;
+
+        // Bottom vertices
+        for (let j = 0; j < gridH; j++) {
+          for (let i = 0; i < gridW; i++) {
+            const u = i / (gridW - 1);
+            const v = j / (gridH - 1);
+            const x = (u - 0.5) * realW;
+            const y = (0.5 - v) * realH;
+            positions.push(x, y, 0.0);
+            uvs.push(u, 1.0 - v);
+          }
+        }
+
+        // Bottom surface triangles (facing downwards, reversed winding)
+        for (let j = 0; j < gridH - 1; j++) {
+          for (let i = 0; i < gridW - 1; i++) {
+            const b00 = offset + (j * gridW + i);
+            const b10 = offset + (j * gridW + i + 1);
+            const b01 = offset + ((j + 1) * gridW + i);
+            const b11 = offset + ((j + 1) * gridW + i + 1);
+            indices.push(b00, b11, b10);
+            indices.push(b00, b01, b11);
+          }
+        }
+
+        // 4 Perimeter side walls with outward-facing normals
+        // Top wall (j = 0, normal +y)
+        for (let i = 0; i < gridW - 1; i++) {
+          const t0 = i, t1 = i + 1;
+          const b0 = offset + i, b1 = offset + i + 1;
+          indices.push(t0, t1, b0);
+          indices.push(t1, b1, b0);
+        }
+
+        // Bottom wall (j = gridH - 1, normal -y)
+        const rowOffset = (gridH - 1) * gridW;
+        for (let i = 0; i < gridW - 1; i++) {
+          const t0 = rowOffset + i, t1 = rowOffset + i + 1;
+          const b0 = offset + rowOffset + i, b1 = offset + rowOffset + i + 1;
+          indices.push(t0, b0, t1);
+          indices.push(t1, b0, b1);
+        }
+
+        // Left wall (i = 0, normal -x)
+        for (let j = 0; j < gridH - 1; j++) {
+          const t0 = j * gridW, t1 = (j + 1) * gridW;
+          const b0 = offset + j * gridW, b1 = offset + (j + 1) * gridW;
+          indices.push(t0, b0, t1);
+          indices.push(t1, b0, b1);
+        }
+
+        // Right wall (i = gridW - 1, normal +x)
+        for (let j = 0; j < gridH - 1; j++) {
+          const t0 = j * gridW + (gridW - 1), t1 = (j + 1) * gridW + (gridW - 1);
+          const b0 = offset + j * gridW + (gridW - 1), b1 = offset + (j + 1) * gridW + (gridW - 1);
+          indices.push(t0, t1, b0);
+          indices.push(t1, b1, b0);
+        }
+      }
+
+      const vibeBadgeEl = document.getElementById('vibeBadge');
+      const vibeSlug = (vibeBadgeEl ? vibeBadgeEl.textContent : 'y2k').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+
+      if (format === 'stl') {
+        const filename = `y2k-tribal-${vibeSlug}-${baseStyle}-${gridRes}x${gridH}-${ts}.stl`;
+        const stlBlob = createBinarySTL(positions, indices);
+        downloadBlob(stlBlob, filename);
+        if (statusEl) statusEl.textContent = `Saved ${filename} (${(stlBlob.size / 1024 / 1024).toFixed(1)} MB)`;
+      } else if (format === 'gltf') {
+        const filename = `y2k-tribal-${vibeSlug}-${baseStyle}-${gridRes}x${gridH}-${ts}.glb`;
+
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        geom.setIndex(indices);
+        geom.computeVertexNormals();
+
+        // Authentic Y2K metallic PBR material
+        const mat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(pal.hor[0], pal.hor[1], pal.hor[2]),
+          metalness: 0.95,
+          roughness: 0.16,
+          name: 'Y2KChromeMetal'
+        });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.name = 'Y2KTribalSigil';
+
+        if (THREE.GLTFExporter) {
+          const exporter = new THREE.GLTFExporter();
+          exporter.parse(mesh, (gltf) => {
+            const glbBlob = new Blob([gltf], { type: 'application/octet-stream' });
+            downloadBlob(glbBlob, filename);
+            if (statusEl) statusEl.textContent = `Saved ${filename} (${(glbBlob.size / 1024 / 1024).toFixed(1)} MB)`;
+          }, { binary: true });
+        } else {
+          // Fallback if CDN failed
+          if (statusEl) statusEl.textContent = 'GLTF exporter loading... try again in a moment';
+        }
+      }
+
+    } catch (err) {
+      console.error('3D export error:', err);
+      if (statusEl) statusEl.textContent = '3D Error: ' + err.message;
+    }
+  });
+}
+
+// Wire up Export Buttons
+document.getElementById('btnExportPng').onclick = () => exportImage(true);
+document.getElementById('btnExportJpg').onclick = () => exportImage(false);
+document.getElementById('btnExportStl').onclick = () => export3DModel('stl');
+document.getElementById('btnExportGltf').onclick = () => export3DModel('gltf');
+*/
+
+// ---------- Nostalgic Noise, Dust & Film Scratches FX ----------
+(function initNostalgicNoise() {
+  const TILE = 256;
+  const TAU = Math.PI * 2;
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  const generator = seed => {
+    let state = seed >>> 0 || 1;
+    return () => {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+
+  const paintTile = (contrast, colored) => {
+    const cvs = document.createElement('canvas');
+    cvs.width = TILE;
+    cvs.height = TILE;
+    const ctx = cvs.getContext('2d');
+    if (!ctx) return null;
+    const img = ctx.createImageData(TILE, TILE);
+    const data = img.data;
+    const random = generator(1013904223);
+    const range = 0.5 + contrast * 1.1;
+    const sample = () => clamp(0.5 + (random() + random() - 1) * range, 0, 1) * 255;
+    for (let i = 0; i < data.length; i += 4) {
+      const val = sample();
+      data[i] = val;
+      data[i + 1] = colored ? sample() : val;
+      data[i + 2] = colored ? sample() : val;
+      data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return cvs;
+  };
+
+  const drawSpeck = (ctx, x, y, radius, tone, alpha) => {
+    const lobes = 1 + Math.floor(Math.random() * 3);
+    for (let k = 0; k < lobes; k++) {
+      const ox = x + (Math.random() - 0.5) * radius * 1.4;
+      const oy = y + (Math.random() - 0.5) * radius * 1.4;
+      const size = radius * (0.55 + Math.random() * 0.5);
+      const fill = ctx.createRadialGradient(ox, oy, 0, ox, oy, size);
+      fill.addColorStop(0, `rgba(${tone}, ${alpha})`);
+      fill.addColorStop(0.55, `rgba(${tone}, ${alpha * 0.85})`);
+      fill.addColorStop(1, `rgba(${tone}, 0)`);
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.arc(ox, oy, size, 0, TAU);
+      ctx.fill();
+    }
+  };
+
+  const drawHair = (ctx, width, height) => {
+    const x = Math.random() * width;
+    const y = Math.random() * height;
+    const length = 14 + Math.random() * 46;
+    const angle = Math.random() * TAU;
+    const bend = (Math.random() - 0.5) * length * 0.9;
+    const ex = x + Math.cos(angle) * length;
+    const ey = y + Math.sin(angle) * length;
+    const cx = (x + ex) / 2 - Math.sin(angle) * bend;
+    const cy = (y + ey) / 2 + Math.cos(angle) * bend;
+    ctx.strokeStyle = `rgba(16, 12, 9, ${0.4 + Math.random() * 0.35})`;
+    ctx.lineWidth = 0.6 + Math.random() * 0.7;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(cx, cy, ex, ey);
+    ctx.stroke();
+  };
+
+  const settings = {
+    opacity: 0.18,
+    size: 1,
+    fps: 24,
+    contrast: 0.6,
+    colored: false,
+    dust: 0.12,
+    scratches: 0.08,
+    flicker: 0.15
+  };
+
+  const root = document.querySelector('.noise');
+  const grain = document.querySelector('.noise__grain');
+  const dustCvs = document.querySelector('.noise__dust');
+  const lines = document.querySelector('.noise__lines');
+  if (!root || !grain || !dustCvs) return;
+
+  const ctx = dustCvs.getContext('2d');
+  const tile = paintTile(clamp(settings.contrast, 0, 1), settings.colored);
+  if (tile) {
+    tile.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      grain.style.backgroundImage = `url("${url}")`;
+    });
+  }
+
+  const scratchList = [];
+  let last = 0, roll = 0;
+  let width = innerWidth, height = innerHeight;
+
+  const paintDust = (s, step) => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, dustCvs.width, dustCvs.height);
+    if (s.dust <= 0 && s.scratches <= 0 && scratchList.length === 0) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const area = (width * height) / 400000;
+
+    if (s.dust > 0) {
+      const specks = Math.round(s.dust * 42 * area * (0.6 + Math.random() * 0.8));
+      for (let i = 0; i < specks; i++) {
+        const light = Math.random() < 0.3;
+        drawSpeck(
+          ctx,
+          Math.random() * width,
+          Math.random() * height,
+          0.6 + Math.random() ** 2.5 * 3.4,
+          light ? '255, 250, 240' : '18, 14, 10',
+          0.6 + Math.random() * 0.35
+        );
+      }
+      const hairs = Math.random() < s.dust * 0.7 ? 1 + Math.floor(Math.random() * s.dust * 2.4) : 0;
+      for (let i = 0; i < hairs; i++) drawHair(ctx, width, height);
+    }
+
+    if (step) {
+      if (scratchList.length < 3 && Math.random() < s.scratches * 0.06) {
+        scratchList.push({
+          x: Math.random() * width,
+          age: 0,
+          life: 0.6 + Math.random() * 2.6,
+          weight: 0.6 + Math.random() * 0.8,
+          light: Math.random() < 0.7,
+          phase: Math.random() * TAU
+        });
+      }
+      for (let i = scratchList.length - 1; i >= 0; i--) {
+        const scratch = scratchList[i];
+        scratch.age += step;
+        scratch.x += (Math.random() - 0.5) * 1.2;
+        if (scratch.age >= scratch.life) scratchList.splice(i, 1);
+      }
+    }
+    scratchList.forEach(scratch => {
+      const fade = Math.min(1, scratch.age / 0.15, (scratch.life - scratch.age) / 0.3);
+      const alpha = (0.25 + Math.random() * 0.35) * fade;
+      ctx.strokeStyle = scratch.light ? `rgba(255, 252, 245, ${alpha})` : `rgba(14, 11, 8, ${alpha})`;
+      ctx.lineWidth = scratch.weight;
+      ctx.beginPath();
+      for (let y = 0; y <= height; y += 24) {
+        const x = scratch.x + Math.sin(y * 0.012 + scratch.phase) * 1.4;
+        if (y === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    });
+  };
+
+  const onResize = () => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    width = innerWidth;
+    height = innerHeight;
+    dustCvs.width = Math.round(width * dpr);
+    dustCvs.height = Math.round(height * dpr);
+    paintDust(settings, 0);
+  };
+  window.addEventListener('resize', onResize);
+  onResize();
+
+  const tick = now => {
+    requestAnimationFrame(tick);
+    const s = settings;
+    const intensity = P.noise !== undefined ? P.noise : s.opacity;
+    if (intensity <= 0.005) {
+      if (root.style.display !== 'none') root.style.display = 'none';
+      return;
+    } else if (root.style.display === 'none') {
+      root.style.display = 'block';
+    }
+    const rate = s.fps;
+    if (rate > 0 && now - last >= 1000 / rate) {
+      const step = last ? Math.min(0.2, (now - last) / 1000) : 1 / rate;
+      last = now;
+      const span = TILE * s.size;
+      grain.style.backgroundPosition = `${(Math.random() * span).toFixed(1)}px ${(Math.random() * span).toFixed(1)}px`;
+      grain.style.opacity = String(intensity * (1 - s.flicker * Math.random() * 0.7));
+      if (lines) {
+        roll = (roll + 1) % 3;
+        lines.style.backgroundPosition = `0 ${roll}px`;
+        lines.style.opacity = String(intensity * 0.5);
+      }
+      s.dust = intensity * 1.5;
+      s.scratches = intensity * 1.0;
+      paintDust(s, step);
+    }
+  };
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
