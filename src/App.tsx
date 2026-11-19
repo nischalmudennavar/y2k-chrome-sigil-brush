@@ -1,12 +1,28 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BrushParams, RefImageState, Stroke, SymmetryMode, ViewTransform } from './types';
+import {
+  BrushParams,
+  EraserMode,
+  HistoryStep,
+  RefImageState,
+  Stroke,
+  SymmetryMode,
+  ToolMode,
+  ViewTransform,
+} from './types';
 import { DEFAULT_PARAMS, LIVE_PARAM_KEYS, PAL, SYMMETRY_MODES } from './constants/presets';
 import { RenderPipeline } from './core/renderPipeline';
 import { CanvasStage } from './components/CanvasStage';
 import { ControlPanel } from './components/ControlPanel';
+import { TimelineDeck } from './components/TimelineDeck';
 import { NoiseOverlay } from './components/NoiseOverlay';
 import { ShortcutsModal } from './components/ShortcutsModal';
-import { export3DModel, exportImage } from './core/export';
+import { BaseStyle, export3DModel, exportImage } from './core/export';
+import { buildStrokeMesh } from './core/geometry';
+import {
+  addSpikesToExistingStroke,
+  generateRandomSigil,
+  SigilStyle,
+} from './core/sigilGenerator';
 
 export const App: React.FC = () => {
   const [currentVibe, setCurrentVibe] = useState<string>('Pink K-Pop');
@@ -25,8 +41,12 @@ export const App: React.FC = () => {
   const [autoOrbit, setAutoOrbit] = useState<boolean>(false);
   const [glowEnabled, setGlowEnabled] = useState<boolean>(true);
   const [aberrationEnabled, setAberrationEnabled] = useState<boolean>(true);
-  const [noiseEnabled, setNoiseEnabled] = useState<boolean>(true);
+  const [noiseEnabled, setNoiseEnabled] = useState<boolean>(false);
   const [exportStatus, setExportStatus] = useState<string>('');
+  const [sigilStyle, setSigilStyle] = useState<SigilStyle>('cyber-gothic');
+  const [toolMode, setToolMode] = useState<ToolMode>('brush');
+  const [eraserSize, setEraserSize] = useState<number>(28);
+  const [eraserMode, setEraserMode] = useState<EraserMode>('slice');
 
   const [panelVisible, setPanelVisible] = useState<boolean>(true);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState<boolean>(false);
@@ -48,8 +68,26 @@ export const App: React.FC = () => {
 
   const pipelineRef = useRef<RenderPipeline | null>(null);
   const strokesRef = useRef<Stroke[]>([]);
-  const redoStackRef = useRef<Stroke[]>([]);
+  const undoStackRef = useRef<HistoryStep[]>([]);
+  const redoStackRef = useRef<HistoryStep[]>([]);
   const [canRedo, setCanRedo] = useState<boolean>(false);
+
+  // Skeuomorphic Timeline Deck State
+  const [timelineVisible, setTimelineVisible] = useState<boolean>(true);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [replaySpeed, setReplaySpeed] = useState<number>(1);
+  const [isLooping, setIsLooping] = useState<boolean>(false);
+  const [historyState, setHistoryState] = useState<{
+    currentStep: number;
+    totalSteps: number;
+    strokeCount: number;
+    currentLabel: string;
+  }>({
+    currentStep: 0,
+    totalSteps: 0,
+    strokeCount: 0,
+    currentLabel: 'Initial Canvas',
+  });
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -125,56 +163,326 @@ export const App: React.FC = () => {
     });
   };
 
-  // Undo & Redo & Clear
-  const handleUndo = useCallback(() => {
-    const s = strokesRef.current.pop();
-    if (s && pipelineRef.current) {
-      redoStackRef.current.push(s);
-      setCanRedo(true);
-      if (s.group) {
-        pipelineRef.current.root.remove(s.group);
-      }
-      pipelineRef.current.dirty = true;
-      showToast('Undo');
-    }
-  }, [showToast]);
-
-  const handleRedo = useCallback(() => {
-    const s = redoStackRef.current.pop();
-    if (s && pipelineRef.current) {
-      strokesRef.current.push(s);
-      setCanRedo(redoStackRef.current.length > 0);
-      if (s.group) {
-        pipelineRef.current.root.add(s.group);
-      }
-      pipelineRef.current.dirty = true;
-      showToast('Redo');
-    }
-  }, [showToast]);
-
-  const handleStrokeAdded = useCallback(() => {
-    redoStackRef.current.forEach((s) => {
-      if (s.group) {
-        s.group.traverse((o: any) => o.geometry?.dispose());
-      }
+  // Skeuomorphic History Sync & Scrubbing Engine
+  const syncHistoryState = useCallback(() => {
+    const cur = undoStackRef.current.length;
+    const total = undoStackRef.current.length + redoStackRef.current.length;
+    const lastStep = cur > 0 ? undoStackRef.current[cur - 1] : null;
+    const currentLabel =
+      lastStep?.label || (cur === 0 ? 'Initial Canvas' : `Step #${cur}`);
+    setHistoryState({
+      currentStep: cur,
+      totalSteps: total,
+      strokeCount: strokesRef.current.length,
+      currentLabel,
     });
-    redoStackRef.current = [];
-    setCanRedo(false);
+    setCanRedo(redoStackRef.current.length > 0);
   }, []);
 
+  const handleJumpToStep = useCallback(
+    (targetStep: number) => {
+      if (!pipelineRef.current) return;
+      const total = undoStackRef.current.length + redoStackRef.current.length;
+      const clamped = Math.max(0, Math.min(total, Math.round(targetStep)));
+      const current = undoStackRef.current.length;
+      if (clamped === current) return;
+
+      if (clamped < current) {
+        // Undo (current - clamped) steps
+        const count = current - clamped;
+        for (let i = 0; i < count; i++) {
+          const step = undoStackRef.current.pop();
+          if (!step) break;
+          redoStackRef.current.push(step);
+
+          // Revert added strokes
+          step.added.forEach((s) => {
+            if (s.group) {
+              pipelineRef.current?.root.remove(s.group);
+            }
+            const idx = strokesRef.current.indexOf(s);
+            if (idx !== -1) strokesRef.current.splice(idx, 1);
+          });
+
+          // Restore removed strokes
+          step.removed.forEach((s) => {
+            if (!s.group) {
+              buildStrokeMesh(
+                pipelineRef.current!,
+                s,
+                window.innerWidth,
+                window.innerHeight,
+                false
+              );
+            } else {
+              pipelineRef.current?.root.add(s.group);
+            }
+            strokesRef.current.push(s);
+          });
+        }
+      } else {
+        // Redo (clamped - current) steps
+        const count = clamped - current;
+        for (let i = 0; i < count; i++) {
+          const step = redoStackRef.current.pop();
+          if (!step) break;
+          undoStackRef.current.push(step);
+
+          // Re-remove removed strokes
+          step.removed.forEach((s) => {
+            if (s.group) {
+              pipelineRef.current?.root.remove(s.group);
+            }
+            const idx = strokesRef.current.indexOf(s);
+            if (idx !== -1) strokesRef.current.splice(idx, 1);
+          });
+
+          // Re-add added strokes
+          step.added.forEach((s) => {
+            if (!s.group) {
+              buildStrokeMesh(
+                pipelineRef.current!,
+                s,
+                window.innerWidth,
+                window.innerHeight,
+                false
+              );
+            } else {
+              pipelineRef.current?.root.add(s.group);
+            }
+            strokesRef.current.push(s);
+          });
+        }
+      }
+
+      pipelineRef.current.dirty = true;
+      syncHistoryState();
+    },
+    [syncHistoryState]
+  );
+
+  const handleUndo = useCallback(() => {
+    if (!pipelineRef.current || undoStackRef.current.length === 0) return;
+    setIsPlaying(false);
+    handleJumpToStep(undoStackRef.current.length - 1);
+    showToast('Undo');
+  }, [handleJumpToStep, showToast]);
+
+  const handleRedo = useCallback(() => {
+    if (!pipelineRef.current || redoStackRef.current.length === 0) return;
+    setIsPlaying(false);
+    handleJumpToStep(undoStackRef.current.length + 1);
+    showToast('Redo');
+  }, [handleJumpToStep, showToast]);
+
+  const handleStrokeAdded = useCallback(
+    (stroke: Stroke) => {
+      setIsPlaying(false);
+      redoStackRef.current.forEach((step) => {
+        step.added.forEach((s) => s.group?.traverse((o: any) => o.geometry?.dispose()));
+      });
+      redoStackRef.current = [];
+      const num = undoStackRef.current.length + 1;
+      undoStackRef.current.push({
+        added: [stroke],
+        removed: [],
+        label: `Stroke #${num}`,
+      });
+      syncHistoryState();
+    },
+    [syncHistoryState]
+  );
+
+  const handleErasePerformed = useCallback(
+    (removed: Stroke[], added: Stroke[]) => {
+      setIsPlaying(false);
+      redoStackRef.current.forEach((step) => {
+        step.added.forEach((s) => s.group?.traverse((o: any) => o.geometry?.dispose()));
+      });
+      redoStackRef.current = [];
+      undoStackRef.current.push({
+        added,
+        removed,
+        label: 'Eraser Cut',
+      });
+      syncHistoryState();
+    },
+    [syncHistoryState]
+  );
+
   const handleClear = useCallback(() => {
-    if (!pipelineRef.current) return;
+    if (!pipelineRef.current || strokesRef.current.length === 0) return;
+    setIsPlaying(false);
     const removed = strokesRef.current.splice(0);
     removed.forEach((s) => {
       if (s.group) {
         pipelineRef.current?.root.remove(s.group);
       }
     });
-    redoStackRef.current.push(...removed);
-    setCanRedo(redoStackRef.current.length > 0);
+    undoStackRef.current.push({
+      added: [],
+      removed,
+      label: 'Clear Canvas',
+    });
+    redoStackRef.current = [];
     pipelineRef.current.dirty = true;
+    syncHistoryState();
     showToast('Canvas Cleared');
-  }, [showToast]);
+  }, [showToast, syncHistoryState]);
+
+  const handleTogglePlay = useCallback(() => {
+    const total = undoStackRef.current.length + redoStackRef.current.length;
+    if (total === 0) {
+      showToast('Draw strokes first to replay');
+      return;
+    }
+    setIsPlaying((prev) => {
+      if (!prev) {
+        if (undoStackRef.current.length >= total) {
+          handleJumpToStep(0);
+        }
+        showToast('Replay Started (Space / K)');
+        return true;
+      } else {
+        showToast('Replay Paused');
+        return false;
+      }
+    });
+  }, [handleJumpToStep, showToast]);
+
+  // Replay animation ticker
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const intervalMs = Math.round(320 / replaySpeed);
+    const timer = setInterval(() => {
+      const cur = undoStackRef.current.length;
+      const total = undoStackRef.current.length + redoStackRef.current.length;
+      if (cur < total) {
+        handleJumpToStep(cur + 1);
+      } else {
+        if (isLooping && total > 0) {
+          handleJumpToStep(0);
+        } else {
+          setIsPlaying(false);
+        }
+      }
+    }, intervalMs);
+
+    return () => clearInterval(timer);
+  }, [isPlaying, replaySpeed, isLooping, handleJumpToStep]);
+
+  // Procedural Sigil Generation on Random Path with Spikes
+  const handleGenerateSigil = useCallback(
+    (style?: SigilStyle) => {
+      if (!pipelineRef.current) return;
+
+      // 1. Move existing strokes to undo stack so generation is undoable
+      const removed = strokesRef.current.splice(0);
+      removed.forEach((s) => {
+        if (s.group) {
+          pipelineRef.current?.root.remove(s.group);
+        }
+      });
+
+      // 2. Compute center & scale
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      const scale = Math.min(cx, cy) * 0.72;
+
+      const chosenStyle = style || sigilStyle;
+
+      // 3. Choose suitable symmetry
+      let activeSym = symmetry;
+      if (chosenStyle === 'radial-seal') {
+        if (!activeSym.startsWith('Radial')) {
+          activeSym = 'Radial 4';
+          setSymmetry('Radial 4');
+        }
+      } else if (activeSym === 'None') {
+        activeSym = 'Mirror X';
+        setSymmetry('Mirror X');
+      }
+
+      // 4. Generate sigil strokes
+      const generated = generateRandomSigil({
+        center: { x: cx, y: cy },
+        scale,
+        symmetry: activeSym,
+        style: chosenStyle,
+        spikeDensity: 0.75,
+        spikeLength: 1.05,
+        brushParams: params,
+      });
+
+      // 5. Build 3D Three.js meshes
+      generated.forEach((s) => {
+        buildStrokeMesh(
+          pipelineRef.current!,
+          s,
+          window.innerWidth,
+          window.innerHeight,
+          false
+        );
+      });
+
+      const styleNames: Record<SigilStyle, string> = {
+        'cyber-gothic': 'Cyber Gothic',
+        'bio-mecha': 'Bio-Mecha',
+        'radial-seal': 'Radial Seal',
+        'minimal-blade': 'Minimal Blade',
+      };
+
+      setIsPlaying(false);
+      strokesRef.current.push(...generated);
+      undoStackRef.current.push({
+        added: generated,
+        removed,
+        label: `Sigil (${styleNames[chosenStyle]})`,
+      });
+      redoStackRef.current = [];
+      pipelineRef.current.dirty = true;
+      syncHistoryState();
+
+      showToast(`✨ Generated ${styleNames[chosenStyle]} Sigil`);
+    },
+    [params, symmetry, sigilStyle, showToast, syncHistoryState]
+  );
+
+  const handleAddSpikes = useCallback(() => {
+    if (!pipelineRef.current || strokesRef.current.length === 0) {
+      showToast('Draw a stroke first to attach spikes');
+      return;
+    }
+    const last = strokesRef.current[strokesRef.current.length - 1];
+    const newSpikes = addSpikesToExistingStroke(last, 6, 1.15);
+    if (newSpikes.length === 0) {
+      showToast('Could not attach spikes to stroke');
+      return;
+    }
+
+    setIsPlaying(false);
+    newSpikes.forEach((s) => {
+      buildStrokeMesh(
+        pipelineRef.current!,
+        s,
+        window.innerWidth,
+        window.innerHeight,
+        false
+      );
+    });
+
+    strokesRef.current.push(...newSpikes);
+    undoStackRef.current.push({
+      added: newSpikes,
+      removed: [],
+      label: 'Attached Spikes',
+    });
+    redoStackRef.current = [];
+    pipelineRef.current.dirty = true;
+    syncHistoryState();
+    showToast('⚡ Attached Spikes to Stroke');
+  }, [showToast, syncHistoryState]);
 
   // Zoom controls
   const handleZoom = useCallback((factor: number) => {
@@ -480,6 +788,28 @@ export const App: React.FC = () => {
         return;
       }
 
+      // Toggle Eraser / Brush (E)
+      if (k === 'e' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setToolMode((prev) => {
+          const next = prev === 'eraser' ? 'brush' : 'eraser';
+          showToast(next === 'eraser' ? 'Tool: Eraser (E)' : 'Tool: Brush (E)');
+          return next;
+        });
+        return;
+      }
+
+      // Generate random sigil with spikes (R) or attach spikes (Shift+R)
+      if (k === 'r' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleAddSpikes();
+        } else {
+          handleGenerateSigil();
+        }
+        return;
+      }
+
       // Clear canvas (Shift+C)
       if (e.key === 'C' && e.shiftKey) {
         e.preventDefault();
@@ -494,6 +824,54 @@ export const App: React.FC = () => {
           showToast(!prev ? 'HUD Panel: Shown' : 'HUD Panel: Hidden (Tab)');
           return !prev;
         });
+        return;
+      }
+
+      // Toggle Chrono Timeline Deck (T)
+      if (k === 't' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setTimelineVisible((prev) => {
+          showToast(!prev ? 'Timeline Deck: Shown' : 'Timeline Deck: Hidden (T)');
+          return !prev;
+        });
+        return;
+      }
+
+      // Play / Pause Replay (K)
+      if (k === 'k' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        handleTogglePlay();
+        return;
+      }
+
+      // Timeline Step Backward (, or <)
+      if (e.key === ',' || e.key === '<') {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Timeline Step Forward (. or >)
+      if (e.key === '.' || e.key === '>') {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      // Jump to Start (Home)
+      if (e.key === 'Home') {
+        e.preventDefault();
+        handleJumpToStep(0);
+        showToast('Timeline: Jump to Start');
+        return;
+      }
+
+      // Jump to End (End)
+      if (e.key === 'End') {
+        e.preventDefault();
+        const total = undoStackRef.current.length + redoStackRef.current.length;
+        handleJumpToStep(total);
+        showToast('Timeline: Jump to End');
         return;
       }
     };
@@ -511,6 +889,8 @@ export const App: React.FC = () => {
   }, [
     handleUndo,
     handleRedo,
+    handleJumpToStep,
+    handleTogglePlay,
     handleClear,
     handleZoom,
     handleZoomReset,
@@ -518,6 +898,8 @@ export const App: React.FC = () => {
     handleBrushWidthNudge,
     handleCycleSymmetry,
     handleCycleVibe,
+    handleGenerateSigil,
+    handleAddSpikes,
     loadRefImage,
     shortcutsModalOpen,
     panMode,
@@ -561,7 +943,7 @@ export const App: React.FC = () => {
 
   const handleExport3D = async (
     format: 'stl' | 'gltf',
-    baseStyle: 'solid' | 'surface',
+    baseStyle: BaseStyle,
     gridRes: number
   ) => {
     if (!pipelineRef.current) return;
@@ -601,7 +983,11 @@ export const App: React.FC = () => {
         autoOrbit={autoOrbit}
         glowEnabled={glowEnabled}
         aberrationEnabled={aberrationEnabled}
+        toolMode={toolMode}
+        eraserSize={eraserSize}
+        eraserMode={eraserMode}
         onStrokeAdded={handleStrokeAdded}
+        onErasePerformed={handleErasePerformed}
       />
 
       {noiseEnabled && <NoiseOverlay intensity={params.noise} />}
@@ -689,6 +1075,19 @@ export const App: React.FC = () => {
           onExportImage={handleExportImage}
           onExport3D={handleExport3D}
           exportStatus={exportStatus}
+          onGenerateSigil={handleGenerateSigil}
+          onAddSpikes={handleAddSpikes}
+          sigilStyle={sigilStyle}
+          onSigilStyleChange={setSigilStyle}
+          toolMode={toolMode}
+          onToolModeChange={(m) => {
+            setToolMode(m);
+            showToast(m === 'eraser' ? 'Tool: Eraser (E)' : 'Tool: Brush (E)');
+          }}
+          eraserSize={eraserSize}
+          onEraserSizeChange={setEraserSize}
+          eraserMode={eraserMode}
+          onEraserModeChange={setEraserMode}
           onOpenShortcuts={() => setShortcutsModalOpen(true)}
         />
       ) : (
@@ -703,6 +1102,26 @@ export const App: React.FC = () => {
       )}
 
       {toastMessage && <div className="hud-toast">{toastMessage}</div>}
+
+      <TimelineDeck
+        currentStep={historyState.currentStep}
+        totalSteps={historyState.totalSteps}
+        currentLabel={historyState.currentLabel}
+        strokeCount={historyState.strokeCount}
+        onJumpToStep={handleJumpToStep}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={historyState.currentStep > 0}
+        canRedo={historyState.totalSteps > historyState.currentStep}
+        isPlaying={isPlaying}
+        onTogglePlay={handleTogglePlay}
+        speed={replaySpeed}
+        onSpeedChange={setReplaySpeed}
+        isLooping={isLooping}
+        onToggleLoop={() => setIsLooping((v) => !v)}
+        visible={timelineVisible}
+        onToggleVisible={() => setTimelineVisible((v) => !v)}
+      />
 
       <ShortcutsModal
         isOpen={shortcutsModalOpen}

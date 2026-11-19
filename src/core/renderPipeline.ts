@@ -120,6 +120,8 @@ export class RenderPipeline {
         uBg: { value: new THREE.Vector3(0.075, 0.022, 0.07) },
         uIri: { value: 0.06 },
         uDepth: { value: 6.0 },
+        uAlphaBg: { value: 1.0 },
+        uFlat: { value: 0.0 },
       },
       vertexShader: finalShader.vertexShader,
       fragmentShader: finalShader.fragmentShader,
@@ -274,6 +276,7 @@ export class RenderPipeline {
     U.uBand.value.set(...(vibe.band || [0.65, 0.85, 1.0]));
     U.uGround.value.set(...(vibe.ground || [0.26, 0.04, 0.18]));
     U.uBg.value.set(...(vibe.bg || [0.075, 0.022, 0.07]));
+    U.uFlat.value = vibe.flat ? 1.0 : 0.0;
     this.dirty = true;
   }
 
@@ -290,6 +293,7 @@ export class RenderPipeline {
     if (vibe.band) U.uBand.value.set(...vibe.band);
     if (vibe.ground) U.uGround.value.set(...vibe.ground);
     if (vibe.bg) U.uBg.value.set(...vibe.bg);
+    U.uFlat.value = vibe.flat ? 1.0 : 0.0;
     U.uIri.value = params.iri + (vibe.iri || 0);
     U.uBevel.value = params.bevel;
     U.uChisel.value = params.chisel !== undefined ? params.chisel : 0.7;

@@ -187,6 +187,81 @@ export function buildStrokeParts(
   return [m];
 }
 
+export function buildStrokeMesh(
+  pipeline: { root: THREE.Group; mChr: THREE.Material; dirty: boolean },
+  s: Stroke,
+  width: number,
+  height: number,
+  isDrawing: boolean = false
+): void {
+  const p = s.params;
+  const sym = s.symmetry || 'None';
+  if (!s.raw || s.raw.length < 2) {
+    if (s.group) {
+      pipeline.root.remove(s.group);
+      s.group.traverse((o: any) => {
+        if (o.geometry) o.geometry.dispose();
+      });
+      s.group = null;
+    }
+    pipeline.dirty = true;
+    return;
+  }
+
+  // Faster smoothing and resampling during active drawing, fine resolution on finish
+  const smoothIterations = isDrawing ? 2 : 3;
+  const resampleStep = isDrawing ? 3.0 : 1.5;
+
+  const smoothed = smooth(s.raw, smoothIterations);
+  const pts = resample(smoothed, resampleStep);
+  s.pts = pts;
+
+  const transforms = getSymmetryTransforms(sym, width, height);
+
+  let g = s.group as THREE.Group | null;
+  if (!g) {
+    g = new THREE.Group();
+    s.group = g;
+    pipeline.root.add(g);
+  }
+
+  let meshIdx = 0;
+  const existingChildren = g.children.filter((c: any) => c.isMesh) as THREE.Mesh[];
+
+  for (const T of transforms) {
+    const c = {
+      pts: pts.map((q) => {
+        const [x, y] = T.f(q.x, q.y);
+        return { x, y, p: q.p };
+      }),
+    };
+
+    const chromeReuse = existingChildren[meshIdx] || null;
+    const chrMeshes = buildStrokeParts(
+      c,
+      0,
+      pipeline.mChr,
+      1,
+      p,
+      chromeReuse ? [chromeReuse] : undefined
+    );
+    chrMeshes.forEach((m) => {
+      if (!m.parent) g!.add(m);
+      meshIdx++;
+    });
+  }
+
+  // Clean up excess meshes if symmetry count decreased
+  while (g.children.length > meshIdx) {
+    const excess = g.children.pop();
+    if (excess) {
+      (excess as any).geometry?.dispose();
+    }
+  }
+
+  pipeline.dirty = true;
+}
+
 export interface TransformDefinition {
   f: (x: number, y: number) => [number, number];
   d: number;
@@ -241,16 +316,45 @@ export function getStrokesBounds(strokes: Stroke[], defaultW = 1000, defaultH = 
     maxX = -Infinity,
     minY = Infinity,
     maxY = -Infinity;
+
   strokes.forEach((s) => {
-    (s.raw || []).forEach((p) => {
-      if (p.x < minX) minX = p.x;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.y > maxY) maxY = p.y;
+    // 1. Check existing mesh geometry bounding boxes if meshes are built
+    if (s.group) {
+      s.group.traverse((obj: any) => {
+        if (obj.isMesh && obj.geometry) {
+          if (!obj.geometry.boundingBox) {
+            obj.geometry.computeBoundingBox();
+          }
+          const bb = obj.geometry.boundingBox;
+          if (bb && !bb.isEmpty() && isFinite(bb.min.x) && isFinite(bb.max.x)) {
+            if (bb.min.x < minX) minX = bb.min.x;
+            if (bb.max.x > maxX) maxX = bb.max.x;
+            if (bb.min.y < minY) minY = bb.min.y;
+            if (bb.max.y > maxY) maxY = bb.max.y;
+          }
+        }
+      });
+    }
+
+    // 2. Also transform points using all symmetry transforms to ensure every branch is fully covered
+    const sym = s.symmetry || 'None';
+    const transforms = getSymmetryTransforms(sym, defaultW, defaultH);
+    const strokeWidth = (s.params?.width || 30) * 1.5;
+    const halfW = strokeWidth / 2;
+    const pts = (s.pts && s.pts.length > 0) ? s.pts : (s.raw || []);
+
+    pts.forEach((p) => {
+      for (const T of transforms) {
+        const [tx, ty] = T.f(p.x, p.y);
+        if (tx - halfW < minX) minX = tx - halfW;
+        if (tx + halfW > maxX) maxX = tx + halfW;
+        if (ty - halfW < minY) minY = ty - halfW;
+        if (ty + halfW > maxY) maxY = ty + halfW;
+      }
     });
   });
 
-  if (!isFinite(minX) || !isFinite(maxX)) {
+  if (!isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) {
     minX = defaultW * 0.25;
     maxX = defaultW * 0.75;
     minY = defaultH * 0.25;

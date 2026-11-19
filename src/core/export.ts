@@ -16,12 +16,15 @@ export interface ImageExportOptions {
   time: number;
 }
 
+export type BaseStyle = 'extruded' | 'sigil' | 'sigil-surface' | 'solid' | 'surface';
+
 export interface Model3DExportOptions {
   format: 'stl' | 'gltf';
-  baseStyle: 'solid' | 'surface';
+  baseStyle: BaseStyle;
   gridRes: number;
   params: BrushParams;
   vibe: VibePreset;
+  baseThickness?: number;
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
@@ -73,14 +76,16 @@ export async function exportImage(
     }
   }
 
-  const bounds = getStrokesBounds(strokes, window.innerWidth, window.innerHeight);
-  const expCam = new THREE.OrthographicCamera(0, 1, 0, 1, -10, 10);
   const oldRootPos = pipeline.root.position.clone();
   const oldRootScale = pipeline.root.scale.clone();
+  pipeline.root.position.set(0, 0, 0);
+  pipeline.root.scale.set(1, 1, 1);
+  pipeline.root.updateMatrixWorld(true);
+
+  const bounds = getStrokesBounds(strokes, window.innerWidth, window.innerHeight);
+  const expCam = new THREE.OrthographicCamera(0, 1, 0, 1, -10, 10);
 
   if (framing === 'fit') {
-    pipeline.root.position.set(0, 0, 0);
-    pipeline.root.scale.set(1, 1, 1);
     const margin = 1.25;
     const artW = bounds.width * margin;
     const artH = bounds.height * margin;
@@ -157,9 +162,10 @@ export async function exportImage(
   U.uFT.value.set(1 / expFw, 1 / expFh);
   U.uFS.value = expFS;
   U.uAlphaBg.value = isTransparentPNG ? 0.0 : 1.0;
+  U.uFlat.value = vibe.flat ? 1.0 : 0.0;
 
-  const glowVal = params.glow !== undefined ? params.glow : 0.15;
-  const abVal = params.aberration !== undefined ? params.aberration : 0.06;
+  const glowVal = vibe.flat ? 0 : (params.glow !== undefined ? params.glow : 0.15);
+  const abVal = vibe.flat ? 0 : (params.aberration !== undefined ? params.aberration : 0.06);
 
   if (!isTransparentPNG && (glowVal > 0.001 || abVal > 0.001)) {
     pipeline.pass(pipeline.finalMat, expSceneRT);
@@ -208,7 +214,7 @@ export async function exportImage(
   }
   ctx.putImageData(imgData, 0, 0);
 
-  if (!isTransparentPNG && (params.noise === undefined || params.noise > 0.01)) {
+  if (!isTransparentPNG && !vibe.flat && (params.noise === undefined || params.noise > 0.01)) {
     applyAnalogFXToCanvas(ctx, targetW, targetH, params.noise !== undefined ? params.noise : 0.1);
   }
 
@@ -315,15 +321,22 @@ export async function export3DModel(
   onStatus?: (msg: string) => void
 ): Promise<void> {
   const { format, baseStyle, gridRes, params, vibe } = opts;
-  const isSolid = baseStyle === 'solid';
+  if (!strokes || strokes.length === 0) {
+    onStatus?.('No strokes to export! Draw something first.');
+    return;
+  }
+
   onStatus?.(`Generating 3D ${format.toUpperCase()} (${gridRes}x${gridRes})...`);
 
-  const bounds = getStrokesBounds(strokes, window.innerWidth, window.innerHeight);
+  // Align pipeline root before computing bounds so that mesh bounding boxes match canvas coordinates
   const oldRootPos = pipeline.root.position.clone();
   const oldRootScale = pipeline.root.scale.clone();
-
   pipeline.root.position.set(0, 0, 0);
   pipeline.root.scale.set(1, 1, 1);
+  pipeline.root.updateMatrixWorld(true);
+
+  // Compute bounding box covering all strokes AND all symmetry branches
+  const bounds = getStrokesBounds(strokes, window.innerWidth, window.innerHeight);
 
   const margin = 1.15;
   const spanW = bounds.width * margin;
@@ -357,6 +370,22 @@ export async function export3DModel(
   pipeline.renderer.setRenderTarget(expMaskRT);
   pipeline.renderer.clear();
   pipeline.renderer.render(pipeline.scene, expCam);
+
+  // Read unblurred stroke mask (exact 2D vector silhouette of the stroke)
+  const maskBytes = new Uint8Array(gridW * gridH * 4);
+  pipeline.renderer.readRenderTargetPixels(expMaskRT, 0, 0, gridW, gridH, maskBytes);
+
+  const mask = new Float32Array(gridW * gridH);
+  let hasStroke = false;
+  for (let idx = 0; idx < gridW * gridH; idx++) {
+    const m = maskBytes[idx * 4] / 255.0;
+    mask[idx] = m;
+    if (m > 0.3) hasStroke = true;
+  }
+  if (!hasStroke) {
+    onStatus?.('No strokes detected to export. Draw something first!');
+    return;
+  }
 
   const expFS = gridW / spanW;
   let expSrc = expMaskRT.texture;
@@ -403,112 +432,365 @@ export async function export3DModel(
   const sizeX = 100 * (aspect >= 1 ? 1 : aspect);
   const sizeY = 100 * (aspect >= 1 ? 1 / aspect : 1);
   const zScale = (params.depth / 6.0) * 14.0;
-  const basePlinthHeight = isSolid ? 2.5 : 0.0;
 
-  const numTopVerts = gridW * gridH;
-  const totalVerts = isSolid ? numTopVerts * 2 : numTopVerts;
-  const positions = new Float32Array(totalVerts * 3);
-  const uvs = new Float32Array(totalVerts * 2);
+  const isExtruded = baseStyle === 'extruded';
+  const isSigilOnly = isExtruded || baseStyle === 'sigil' || baseStyle === 'sigil-surface';
+  const isSolid = isExtruded || baseStyle === 'sigil' || baseStyle === 'solid';
 
-  for (let j = 0; j < gridH; j++) {
-    for (let i = 0; i < gridW; i++) {
+  // Decode high-precision 16-bit heightfield from RGBA render target
+  const H = new Float32Array(gridW * gridH);
+  for (let idx = 0; idx < gridW * gridH; idx++) {
+    const byteR = heightBytes[idx * 4];
+    const byteG = heightBytes[idx * 4 + 1];
+    H[idx] = (byteR * 256 + byteG) / 65535.0;
+  }
+
+  let positions: Float32Array;
+  let uvs: Float32Array;
+  let indices: Uint32Array;
+
+  if (isSigilOnly) {
+    // Sigil Only: Standalone 3D mesh with smooth sub-pixel Marching Squares boundary
+    // Extruded mode: uniform flat top like an extruded PNG/SVG, vertical walls, zero brim
+    // Chiseled mode: sculpted relief rising directly from base, zero brim/flange
+    const extrusionHeight = Math.max(1.0, (params.depth / 6.0) * 4.0); // mm
+    const MASK_THRESHOLD = 0.5;
+
+    const positionsList: number[] = [];
+    const uvsList: number[] = [];
+    const topIndices: number[] = [];
+    const wallSegments: Array<[number, number]> = [];
+
+    const cornerMap = new Int32Array(gridW * gridH).fill(-1);
+    const horizEdgeMap = new Int32Array((gridW - 1) * gridH).fill(-1);
+    const vertEdgeMap = new Int32Array(gridW * (gridH - 1)).fill(-1);
+
+    function getCornerVertex(i: number, j: number): number {
       const idx = j * gridW + i;
+      if (cornerMap[idx] !== -1) return cornerMap[idx];
       const u = i / (gridW - 1);
       const v = j / (gridH - 1);
-
       const px = (u - 0.5) * sizeX;
       const py = (0.5 - v) * sizeY;
 
-      const byteIdx = (j * gridW + i) * 4;
-      const hNorm = heightBytes[byteIdx] / 255.0;
-      const pz = basePlinthHeight + hNorm * zScale;
+      let pz: number;
+      if (isExtruded) {
+        pz = extrusionHeight;
+      } else {
+        const rawVal = H[idx];
+        const hNorm = Math.min(1.0, Math.max(0.0, rawVal));
+        pz = hNorm * zScale;
+      }
 
-      positions[idx * 3] = px;
-      positions[idx * 3 + 1] = py;
-      positions[idx * 3 + 2] = pz;
+      const vIdx = positionsList.length / 3;
+      positionsList.push(px, py, pz);
+      uvsList.push(u, v);
+      cornerMap[idx] = vIdx;
+      return vIdx;
+    }
 
-      uvs[idx * 2] = u;
-      uvs[idx * 2 + 1] = v;
+    function getHorizEdgeVertex(i: number, j: number): number {
+      const edgeIdx = j * (gridW - 1) + i;
+      if (horizEdgeMap[edgeIdx] !== -1) return horizEdgeMap[edgeIdx];
+      const m0 = mask[j * gridW + i];
+      const m1 = mask[j * gridW + (i + 1)];
+      const t = Math.max(0.001, Math.min(0.999, (MASK_THRESHOLD - m0) / (m1 - m0 || 1e-6)));
+      const u = (i + t) / (gridW - 1);
+      const v = j / (gridH - 1);
+      const px = (u - 0.5) * sizeX;
+      const py = (0.5 - v) * sizeY;
+      const pz = isExtruded ? extrusionHeight : 0.0;
+      const vIdx = positionsList.length / 3;
+      positionsList.push(px, py, pz);
+      uvsList.push(u, v);
+      horizEdgeMap[edgeIdx] = vIdx;
+      return vIdx;
+    }
 
-      if (isSolid) {
-        const bIdx = numTopVerts + idx;
-        positions[bIdx * 3] = px;
-        positions[bIdx * 3 + 1] = py;
-        positions[bIdx * 3 + 2] = 0.0;
-        uvs[bIdx * 2] = u;
-        uvs[bIdx * 2 + 1] = v;
+    function getVertEdgeVertex(i: number, j: number): number {
+      const edgeIdx = j * gridW + i;
+      if (vertEdgeMap[edgeIdx] !== -1) return vertEdgeMap[edgeIdx];
+      const m0 = mask[j * gridW + i];
+      const m1 = mask[(j + 1) * gridW + i];
+      const t = Math.max(0.001, Math.min(0.999, (MASK_THRESHOLD - m0) / (m1 - m0 || 1e-6)));
+      const u = i / (gridW - 1);
+      const v = (j + t) / (gridH - 1);
+      const px = (u - 0.5) * sizeX;
+      const py = (0.5 - v) * sizeY;
+      const pz = isExtruded ? extrusionHeight : 0.0;
+      const vIdx = positionsList.length / 3;
+      positionsList.push(px, py, pz);
+      uvsList.push(u, v);
+      vertEdgeMap[edgeIdx] = vIdx;
+      return vIdx;
+    }
+
+    function addPoly(poly: number[], boundaries: Array<[number, number]>) {
+      for (let k = 1; k < poly.length - 1; k++) {
+        topIndices.push(poly[0], poly[k], poly[k + 1]);
+      }
+      for (let b = 0; b < boundaries.length; b++) {
+        wallSegments.push(boundaries[b]);
       }
     }
-  }
 
-  const indicesArr: number[] = [];
-  // Top grid surface
-  for (let j = 0; j < gridH - 1; j++) {
-    for (let i = 0; i < gridW - 1; i++) {
-      const i0 = j * gridW + i;
-      const i1 = i0 + 1;
-      const i2 = (j + 1) * gridW + i;
-      const i3 = i2 + 1;
-      indicesArr.push(i0, i1, i2);
-      indicesArr.push(i1, i3, i2);
-    }
-  }
-
-  if (isSolid) {
-    // Bottom grid surface
     for (let j = 0; j < gridH - 1; j++) {
       for (let i = 0; i < gridW - 1; i++) {
-        const i0 = numTopVerts + j * gridW + i;
+        const m0 = mask[j * gridW + i];
+        const m1 = mask[j * gridW + (i + 1)];
+        const m2 = mask[(j + 1) * gridW + (i + 1)];
+        const m3 = mask[(j + 1) * gridW + i];
+
+        const b0 = m0 >= MASK_THRESHOLD ? 1 : 0;
+        const b1 = m1 >= MASK_THRESHOLD ? 2 : 0;
+        const b2 = m2 >= MASK_THRESHOLD ? 4 : 0;
+        const b3 = m3 >= MASK_THRESHOLD ? 8 : 0;
+        const cellMask = b0 | b1 | b2 | b3;
+
+        if (cellMask === 0) continue;
+
+        const e0 = (b0 !== b1) ? getHorizEdgeVertex(i, j) : -1;
+        const e1 = (b1 !== b2) ? getVertEdgeVertex(i + 1, j) : -1;
+        const e2 = (b3 !== b2) ? getHorizEdgeVertex(i, j + 1) : -1;
+        const e3 = (b0 !== b3) ? getVertEdgeVertex(i, j) : -1;
+
+        const v0 = b0 ? getCornerVertex(i, j) : -1;
+        const v1 = b1 ? getCornerVertex(i + 1, j) : -1;
+        const v2 = b2 ? getCornerVertex(i + 1, j + 1) : -1;
+        const v3 = b3 ? getCornerVertex(i, j + 1) : -1;
+
+        switch (cellMask) {
+          case 1: // TL
+            addPoly([v0, e3, e0], [[e0, e3]]);
+            break;
+          case 2: // TR
+            addPoly([v1, e0, e1], [[e1, e0]]);
+            break;
+          case 3: // TL, TR
+            addPoly([v0, e3, e1, v1], [[e1, e3]]);
+            break;
+          case 4: // BR
+            addPoly([v2, e1, e2], [[e2, e1]]);
+            break;
+          case 5: { // TL, BR (saddle)
+            const mid = (m0 + m1 + m2 + m3) * 0.25;
+            if (mid >= MASK_THRESHOLD) {
+              addPoly([v0, e3, e2, v2, e1, e0], [[e0, e3], [e2, e1]]);
+            } else {
+              addPoly([v0, e3, e0], [[e0, e3]]);
+              addPoly([v2, e1, e2], [[e2, e1]]);
+            }
+            break;
+          }
+          case 6: // TR, BR
+            addPoly([v1, e0, e2, v2], [[e2, e0]]);
+            break;
+          case 7: // TL, TR, BR (BL outside)
+            addPoly([v0, e3, e2, v2, v1], [[e2, e3]]);
+            break;
+          case 8: // BL
+            addPoly([v3, e2, e3], [[e3, e2]]);
+            break;
+          case 9: // TL, BL
+            addPoly([v0, v3, e2, e0], [[e0, e2]]);
+            break;
+          case 10: { // TR, BL (saddle)
+            const mid = (m0 + m1 + m2 + m3) * 0.25;
+            if (mid >= MASK_THRESHOLD) {
+              addPoly([v3, e2, e1, v1, e0, e3], [[e1, e0], [e3, e2]]);
+            } else {
+              addPoly([v1, e0, e1], [[e1, e0]]);
+              addPoly([v3, e2, e3], [[e3, e2]]);
+            }
+            break;
+          }
+          case 11: // TL, TR, BL (BR outside)
+            addPoly([v0, v3, e2, e1, v1], [[e1, e2]]);
+            break;
+          case 12: // BR, BL
+            addPoly([v3, v2, e1, e3], [[e3, e1]]);
+            break;
+          case 13: // TL, BR, BL (TR outside)
+            addPoly([v0, v3, v2, e1, e0], [[e0, e1]]);
+            break;
+          case 14: // TR, BR, BL (TL outside)
+            addPoly([v3, v2, v1, e0, e3], [[e3, e0]]);
+            break;
+          case 15: // All 4 inside
+            addPoly([v3, v2, v1, v0], []);
+            break;
+        }
+      }
+    }
+
+    const numTopVerts = positionsList.length / 3;
+    if (numTopVerts === 0) {
+      onStatus?.('No sigil features detected in strokes to export.');
+      return;
+    }
+
+    const totalVerts = isSolid ? numTopVerts * 2 : numTopVerts;
+    positions = new Float32Array(totalVerts * 3);
+    uvs = new Float32Array(totalVerts * 2);
+
+    for (let k = 0; k < positionsList.length; k++) {
+      positions[k] = positionsList[k];
+    }
+    for (let k = 0; k < uvsList.length; k++) {
+      uvs[k] = uvsList[k];
+    }
+
+    if (isSolid) {
+      for (let k = 0; k < numTopVerts; k++) {
+        const bIdx = numTopVerts + k;
+        positions[bIdx * 3] = positionsList[k * 3];
+        positions[bIdx * 3 + 1] = positionsList[k * 3 + 1];
+        positions[bIdx * 3 + 2] = 0.0;
+        uvs[bIdx * 2] = uvsList[k * 2];
+        uvs[bIdx * 2 + 1] = uvsList[k * 2 + 1];
+      }
+    }
+
+    const indicesArr: number[] = [];
+
+    // Top surface triangles
+    for (let k = 0; k < topIndices.length; k++) {
+      indicesArr.push(topIndices[k]);
+    }
+
+    if (isSolid) {
+      // Bottom surface triangles (reversed winding for -Z outward normal)
+      for (let k = 0; k < topIndices.length; k += 3) {
+        indicesArr.push(
+          numTopVerts + topIndices[k],
+          numTopVerts + topIndices[k + 2],
+          numTopVerts + topIndices[k + 1]
+        );
+      }
+
+      // Smooth perimeter wall quads along sub-pixel boundary segments
+      for (const [ea, eb] of wallSegments) {
+        const b_ea = numTopVerts + ea;
+        const b_eb = numTopVerts + eb;
+        indicesArr.push(ea, eb, b_ea);
+        indicesArr.push(eb, b_eb, b_ea);
+      }
+    }
+
+    indices = new Uint32Array(indicesArr);
+  } else {
+    // Rectangular plinth (solid block base or open surface grid)
+    const basePlinthHeight = isSolid ? 2.5 : 0.0;
+
+    const numTopVerts = gridW * gridH;
+    const totalVerts = isSolid ? numTopVerts * 2 : numTopVerts;
+    positions = new Float32Array(totalVerts * 3);
+    uvs = new Float32Array(totalVerts * 2);
+
+    for (let j = 0; j < gridH; j++) {
+      for (let i = 0; i < gridW; i++) {
+        const idx = j * gridW + i;
+        const u = i / (gridW - 1);
+        const v = j / (gridH - 1);
+
+        const px = (u - 0.5) * sizeX;
+        const py = (0.5 - v) * sizeY;
+
+        const hNorm = H[idx];
+        const pz = basePlinthHeight + hNorm * zScale;
+
+        positions[idx * 3] = px;
+        positions[idx * 3 + 1] = py;
+        positions[idx * 3 + 2] = pz;
+
+        uvs[idx * 2] = u;
+        uvs[idx * 2 + 1] = v;
+
+        if (isSolid) {
+          const bIdx = numTopVerts + idx;
+          positions[bIdx * 3] = px;
+          positions[bIdx * 3 + 1] = py;
+          positions[bIdx * 3 + 2] = 0.0;
+          uvs[bIdx * 2] = u;
+          uvs[bIdx * 2 + 1] = v;
+        }
+      }
+    }
+
+    const indicesArr: number[] = [];
+    // Top grid surface (+Z outward normal)
+    for (let j = 0; j < gridH - 1; j++) {
+      for (let i = 0; i < gridW - 1; i++) {
+        const i0 = j * gridW + i;
         const i1 = i0 + 1;
-        const i2 = numTopVerts + (j + 1) * gridW + i;
+        const i2 = (j + 1) * gridW + i;
         const i3 = i2 + 1;
         indicesArr.push(i0, i2, i1);
         indicesArr.push(i1, i2, i3);
       }
     }
-    // Perimeter skirts
-    for (let i = 0; i < gridW - 1; i++) {
-      const t0 = i,
-        t1 = i + 1;
-      const b0 = numTopVerts + t0,
-        b1 = numTopVerts + t1;
-      indicesArr.push(t0, b0, t1);
-      indicesArr.push(t1, b0, b1);
+
+    if (isSolid) {
+      // Bottom grid surface (-Z outward normal)
+      for (let j = 0; j < gridH - 1; j++) {
+        for (let i = 0; i < gridW - 1; i++) {
+          const i0 = numTopVerts + j * gridW + i;
+          const i1 = i0 + 1;
+          const i2 = numTopVerts + (j + 1) * gridW + i;
+          const i3 = i2 + 1;
+          indicesArr.push(i0, i1, i2);
+          indicesArr.push(i1, i3, i2);
+        }
+      }
+      // Perimeter skirts
+      // North
+      for (let i = 0; i < gridW - 1; i++) {
+        const t0 = i,
+          t1 = i + 1;
+        const b0 = numTopVerts + t0,
+          b1 = numTopVerts + t1;
+        indicesArr.push(t0, t1, b0);
+        indicesArr.push(t1, b1, b0);
+      }
+      // South
+      const lastRow = (gridH - 1) * gridW;
+      for (let i = 0; i < gridW - 1; i++) {
+        const t0 = lastRow + i,
+          t1 = lastRow + i + 1;
+        const b0 = numTopVerts + t0,
+          b1 = numTopVerts + t1;
+        indicesArr.push(t0, b0, t1);
+        indicesArr.push(t1, b0, b1);
+      }
+      // West
+      for (let j = 0; j < gridH - 1; j++) {
+        const t0 = j * gridW,
+          t1 = (j + 1) * gridW;
+        const b0 = numTopVerts + t0,
+          b1 = numTopVerts + t1;
+        indicesArr.push(t0, b0, t1);
+        indicesArr.push(t1, b0, b1);
+      }
+      // East
+      for (let j = 0; j < gridH - 1; j++) {
+        const t0 = j * gridW + (gridW - 1),
+          t1 = (j + 1) * gridW + (gridW - 1);
+        const b0 = numTopVerts + t0,
+          b1 = numTopVerts + t1;
+        indicesArr.push(t0, t1, b0);
+        indicesArr.push(t1, b1, b0);
+      }
     }
-    const lastRow = (gridH - 1) * gridW;
-    for (let i = 0; i < gridW - 1; i++) {
-      const t0 = lastRow + i,
-        t1 = lastRow + i + 1;
-      const b0 = numTopVerts + t0,
-        b1 = numTopVerts + t1;
-      indicesArr.push(t0, t1, b0);
-      indicesArr.push(t1, b1, b0);
-    }
-    for (let j = 0; j < gridH - 1; j++) {
-      const t0 = j * gridW,
-        t1 = (j + 1) * gridW;
-      const b0 = numTopVerts + t0,
-        b1 = numTopVerts + t1;
-      indicesArr.push(t0, t1, b0);
-      indicesArr.push(t1, b1, b0);
-    }
-    for (let j = 0; j < gridH - 1; j++) {
-      const t0 = j * gridW + (gridW - 1),
-        t1 = (j + 1) * gridW + (gridW - 1);
-      const b0 = numTopVerts + t0,
-        b1 = numTopVerts + t1;
-      indicesArr.push(t0, b0, t1);
-      indicesArr.push(t1, b0, b1);
-    }
+
+    indices = new Uint32Array(indicesArr);
   }
 
-  const indices = new Uint32Array(indicesArr);
   const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const vibeSlug = (vibe.badge || 'y2k').toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
   if (format === 'stl') {
     const stlBlob = createBinarySTL(positions, indices);
-    const filename = `y2k-tribal-${vibeSlug}-${isSolid ? 'solid' : 'surface'}-${gridW}x${gridH}-${ts}.stl`;
+    const filename = `y2k-tribal-${vibeSlug}-${baseStyle}-${gridW}x${gridH}-${ts}.stl`;
     downloadBlob(stlBlob, filename);
     onStatus?.(`Saved ${filename}`);
   } else if (format === 'gltf') {

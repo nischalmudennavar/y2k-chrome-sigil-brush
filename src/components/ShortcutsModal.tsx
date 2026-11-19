@@ -19,6 +19,9 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     category: 'Drawing & Brush',
     items: [
+      { keys: ['E'], desc: 'Toggle Eraser Brush / Draw Tool' },
+      { keys: ['R'], desc: 'Generate Random Sigil with Spikes' },
+      { keys: ['Shift', 'R'], desc: 'Attach Spikes to Current Stroke' },
       { keys: ['['], desc: 'Decrease Brush Width (−2px, Shift for −10)' },
       { keys: [']'], desc: 'Increase Brush Width (+2px, Shift for +10)' },
       { keys: ['X'], desc: 'Cycle Symmetry (None, Mirror, Radial)' },
@@ -48,6 +51,17 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['G'], desc: 'Toggle Star Glow Post-Filter' },
       { keys: ['B'], desc: 'Toggle Chromatic Aberration' },
       { keys: ['N'], desc: 'Toggle Film Noise / Scratches' },
+    ],
+  },
+  {
+    category: 'Timeline & Stroke Replay',
+    items: [
+      { keys: ['T'], desc: 'Toggle Chrono Timeline Deck' },
+      { keys: ['K'], desc: 'Play / Pause Stroke Replay' },
+      { keys: [','], desc: 'Step Backward in Timeline (Undo)' },
+      { keys: ['.'], desc: 'Step Forward in Timeline (Redo)' },
+      { keys: ['Home'], desc: 'Jump to Initial Stroke (Step 0)' },
+      { keys: ['End'], desc: 'Jump to Final Stroke (Latest)' },
     ],
   },
   {

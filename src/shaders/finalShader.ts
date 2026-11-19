@@ -5,7 +5,7 @@ export const finalShader = {
   fragmentShader: `
     uniform sampler2D tMask, tF;
     uniform vec2 uPx, uFT, uPtr;
-    uniform float uFS, uT, uBevel, uChisel, uThr, uIri;
+    uniform float uFS, uT, uBevel, uChisel, uThr, uIri, uFlat, uAlphaBg;
     uniform vec3 uSky, uHor, uBand, uGround, uBg;
     varying vec2 vUv;
 
@@ -66,6 +66,13 @@ export const finalShader = {
       float A = max(m.r, fa);
       float O = max(max(m.g, fo), A);
       
+      // Plain Flat Black & White Vector Trace Mode
+      if (uFlat > 0.5) {
+        float alpha = mix(uAlphaBg, 1.0, O);
+        gl_FragColor = vec4(mix(uBg, uSky, O), alpha);
+        return;
+      }
+      
       vec2 e = uFT;
       float hC = H(u);
       float hL = H(u - vec2(e.x, 0.0));
@@ -105,7 +112,8 @@ export const finalShader = {
       }
       
       vec3 bg = uBg;
-      gl_FragColor = vec4(mix(bg, mix(vec3(0.01), col, A), O), 1.0);
+      float alpha = mix(uAlphaBg, 1.0, O);
+      gl_FragColor = vec4(mix(bg, mix(vec3(0.01), col, A), O), alpha);
     }
   `,
 };

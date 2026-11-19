@@ -2,13 +2,17 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import {
   BrushParams,
+  EraserMode,
   RefImageState,
   Stroke,
   SymmetryMode,
+  ToolMode,
   ViewTransform,
 } from '../types';
 import { RenderPipeline } from '../core/renderPipeline';
+import { eraseAtSegment } from '../core/eraser';
 import {
+  buildStrokeMesh,
   buildStrokeParts,
   getSymmetryTransforms,
   pressureFactor,
@@ -31,7 +35,11 @@ interface CanvasStageProps {
   autoOrbit: boolean;
   glowEnabled?: boolean;
   aberrationEnabled?: boolean;
-  onStrokeAdded?: () => void;
+  toolMode?: ToolMode;
+  eraserSize?: number;
+  eraserMode?: EraserMode;
+  onStrokeAdded?: (stroke: Stroke) => void;
+  onErasePerformed?: (removed: Stroke[], added: Stroke[]) => void;
 }
 
 export const CanvasStage: React.FC<CanvasStageProps> = ({
@@ -49,7 +57,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   autoOrbit,
   glowEnabled = true,
   aberrationEnabled = true,
+  toolMode = 'brush',
+  eraserSize = 28,
+  eraserMode = 'slice',
   onStrokeAdded,
+  onErasePerformed,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const guideRef = useRef<SVGSVGElement>(null);
@@ -77,6 +89,21 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const aberrationEnabledRef = useRef(aberrationEnabled);
   aberrationEnabledRef.current = aberrationEnabled;
 
+  const toolModeRef = useRef<ToolMode>(toolMode);
+  toolModeRef.current = toolMode;
+
+  const eraserSizeRef = useRef<number>(eraserSize);
+  eraserSizeRef.current = eraserSize;
+
+  const eraserModeRef = useRef<EraserMode>(eraserMode);
+  eraserModeRef.current = eraserMode;
+
+  const eraserCursorRef = useRef<{ x: number; y: number; visible: boolean }>({
+    x: 0,
+    y: 0,
+    visible: false,
+  });
+
   const orbRef = useRef({ y: 0, p: 0, z: 1 });
   const ptrRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const timeRef = useRef(0);
@@ -97,69 +124,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   // Helper: rebuild three geometry for a stroke with in-place dynamic buffer reuse
   const rebuildStroke = (s: Stroke, isDrawing: boolean = false) => {
     if (!pipelineRef.current) return;
-    const p = s.params || paramsRef.current;
-    const sym = s.symmetry || symmetryRef.current;
-    if (s.raw.length < 2) {
-      dropStroke(s);
-      return;
-    }
-
-    // Faster smoothing and resampling during active drawing, fine resolution on finish
-    const smoothIterations = isDrawing ? 2 : 3;
-    const resampleStep = isDrawing ? 3.0 : 1.5;
-
-    const smoothed = smooth(s.raw, smoothIterations);
-    const pts = resample(smoothed, resampleStep);
-    s.pts = pts;
-
-    const transforms = getSymmetryTransforms(
-      sym,
+    s.params = s.params || paramsRef.current;
+    s.symmetry = s.symmetry || symmetryRef.current;
+    buildStrokeMesh(
+      pipelineRef.current,
+      s,
       window.innerWidth,
-      window.innerHeight
+      window.innerHeight,
+      isDrawing
     );
-
-    let g = s.group as THREE.Group | null;
-    if (!g) {
-      g = new THREE.Group();
-      s.group = g;
-      pipelineRef.current.root.add(g);
-    }
-
-    let meshIdx = 0;
-    const existingChildren = g.children.filter((c: any) => c.isMesh) as THREE.Mesh[];
-
-    for (const T of transforms) {
-      const c = {
-        pts: pts.map((q) => {
-          const [x, y] = T.f(q.x, q.y);
-          return { x, y, p: q.p };
-        }),
-      };
-
-      const chromeReuse = existingChildren[meshIdx] || null;
-      const chrMeshes = buildStrokeParts(
-        c,
-        0,
-        pipelineRef.current.mChr,
-        1,
-        p,
-        chromeReuse ? [chromeReuse] : undefined
-      );
-      chrMeshes.forEach((m) => {
-        if (!m.parent) g!.add(m);
-        meshIdx++;
-      });
-    }
-
-    // Clean up excess meshes if symmetry count decreased
-    while (g.children.length > meshIdx) {
-      const excess = g.children.pop();
-      if (excess) {
-        (excess as any).geometry?.dispose();
-      }
-    }
-
-    pipelineRef.current.dirty = true;
   };
 
   // Update guide SVG overlay
@@ -183,7 +156,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       }
     }
     const currentView = viewRef.current;
-    el.innerHTML = `<g transform="translate(${currentView.x}, ${currentView.y}) scale(${currentView.scale})"><g stroke='${guideColor}' stroke-dasharray='4 6'>${s}</g></g>`;
+    let eraserCircle = '';
+    if (toolModeRef.current === 'eraser' && eraserCursorRef.current.visible && !mode3dRef.current) {
+      const ec = eraserCursorRef.current;
+      const r = eraserSizeRef.current / 2;
+      eraserCircle = `<circle cx='${ec.x}' cy='${ec.y}' r='${r}' fill='rgba(255, 75, 110, 0.22)' stroke='#ff4d79' stroke-width='1.5' stroke-dasharray='3 3'/>`;
+    }
+    el.innerHTML = `<g transform="translate(${currentView.x}, ${currentView.y}) scale(${currentView.scale})"><g stroke='${guideColor}' stroke-dasharray='4 6'>${s}</g>${eraserCircle}</g>`;
     el.style.display = mode3dRef.current ? 'none' : '';
   };
 
@@ -204,7 +183,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   useEffect(() => {
     drawGuide();
     updateRefTransform();
-  }, [view, symmetry, guideColor, refState, mode3d]);
+  }, [view, symmetry, guideColor, refState, mode3d, toolMode, eraserSize]);
 
   // Main canvas interaction & animation loop
   useEffect(() => {
@@ -217,6 +196,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     let cur: Stroke | null = null;
     let curStrokeDirty = false;
+    let isErasing = false;
+    let lastErasePos = { x: 0, y: 0 };
+    let accumRemoved: Stroke[] = [];
+    let accumAdded: Stroke[] = [];
     let orbDrag: { x: number; y: number } | null = null;
     let isPanning = false;
     let panStart = { x: 0, y: 0 };
@@ -322,6 +305,29 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       }
 
       const p0 = getCanvasPos(e.clientX, e.clientY);
+
+      if (toolModeRef.current === 'eraser') {
+        isErasing = true;
+        lastErasePos = p0;
+        accumRemoved = [];
+        accumAdded = [];
+        const res = eraseAtSegment(
+          strokesRef.current,
+          p0,
+          p0,
+          eraserSizeRef.current / 2,
+          eraserModeRef.current,
+          window.innerWidth,
+          window.innerHeight,
+          pipeline
+        );
+        if (res.modified) {
+          accumRemoved.push(...res.removedStrokes);
+          accumAdded.push(...res.addedStrokes);
+        }
+        return;
+      }
+
       cur = {
         raw: [{ x: p0.x, y: p0.y, p: e.pressure }],
         group: null,
@@ -330,7 +336,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       };
       strokesRef.current.push(cur);
       rebuildStroke(cur);
-      onStrokeAdded?.();
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -384,6 +389,37 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         return;
       }
 
+      // Update eraser cursor tracking
+      const curCanvasPos = getCanvasPos(e.clientX, e.clientY);
+      eraserCursorRef.current = { x: curCanvasPos.x, y: curCanvasPos.y, visible: true };
+      if (toolModeRef.current === 'eraser') {
+        drawGuide();
+      }
+
+      if (isErasing) {
+        const co = (e as any).getCoalescedEvents ? (e as any).getCoalescedEvents() : [];
+        (co.length ? co : [e]).forEach((c: PointerEvent) => {
+          const p = getCanvasPos(c.clientX, c.clientY);
+          if (Math.hypot(p.x - lastErasePos.x, p.y - lastErasePos.y) < 2 / viewRef.current.scale) return;
+          const res = eraseAtSegment(
+            strokesRef.current,
+            lastErasePos,
+            p,
+            eraserSizeRef.current / 2,
+            eraserModeRef.current,
+            window.innerWidth,
+            window.innerHeight,
+            pipeline
+          );
+          if (res.modified) {
+            accumRemoved.push(...res.removedStrokes);
+            accumAdded.push(...res.addedStrokes);
+          }
+          lastErasePos = p;
+        });
+        return;
+      }
+
       if (!cur) return;
       let added = false;
       const co = (e as any).getCoalescedEvents ? (e as any).getCoalescedEvents() : [];
@@ -419,12 +455,24 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         setInteractiveMode(false);
         return;
       }
+      if (isErasing) {
+        isErasing = false;
+        if (accumRemoved.length > 0 || accumAdded.length > 0) {
+          onErasePerformed?.(accumRemoved, accumAdded);
+        }
+        accumRemoved = [];
+        accumAdded = [];
+        pipeline.dirty = true;
+        setInteractiveMode(false);
+        return;
+      }
       if (cur) {
         if (cur.raw.length < 2) {
           strokesRef.current.pop();
           dropStroke(cur);
         } else {
           rebuildStroke(cur, false);
+          onStrokeAdded?.(cur);
         }
       }
       cur = null;
@@ -461,10 +509,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       setInteractiveMode(false);
     };
 
+    const onPointerLeave = () => {
+      eraserCursorRef.current.visible = false;
+      drawGuide();
+    };
+
     canvas.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerEnd);
     canvas.addEventListener('pointercancel', onPointerEnd);
+    canvas.addEventListener('pointerleave', onPointerLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
 
     const onResize = () => {
@@ -589,6 +643,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       window.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerEnd);
       canvas.removeEventListener('pointercancel', onPointerEnd);
+      canvas.removeEventListener('pointerleave', onPointerLeave);
       canvas.removeEventListener('wheel', onWheel);
       window.removeEventListener('resize', onResize);
     };

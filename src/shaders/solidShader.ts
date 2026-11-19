@@ -24,5 +24,9 @@ export const solidShader = {
     .replace(
       'gl_FragColor = vec4(mix(bg, mix(vec3(0.01), col, A), O), alpha);',
       'gl_FragColor = vec4(mix(vec3(0.01), col, A), O);'
+    )
+    .replace(
+      'gl_FragColor = vec4(mix(uBg, uSky, O), alpha);',
+      'gl_FragColor = vec4(uSky, O);'
     ),
 };

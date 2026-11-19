@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { BrushParams, RefImageState, SymmetryMode, VibePreset } from '../types';
+import { BrushParams, EraserMode, RefImageState, SymmetryMode, ToolMode, VibePreset } from '../types';
 import { PAL, PARAM_DEFS, SYMMETRY_MODES } from '../constants/presets';
+import { BaseStyle } from '../core/export';
+import { SigilStyle } from '../core/sigilGenerator';
 import { SliderRow } from './SliderRow';
 
 interface ControlPanelProps {
@@ -52,9 +54,23 @@ interface ControlPanelProps {
   onCenterRef: () => void;
   onClearRef: () => void;
 
+  // Procedural Generator
+  onGenerateSigil: (style?: SigilStyle) => void;
+  onAddSpikes?: () => void;
+  sigilStyle: SigilStyle;
+  onSigilStyleChange: (style: SigilStyle) => void;
+
+  // Tool & Eraser
+  toolMode: ToolMode;
+  onToolModeChange: (mode: ToolMode) => void;
+  eraserSize: number;
+  onEraserSizeChange: (size: number) => void;
+  eraserMode: EraserMode;
+  onEraserModeChange: (mode: EraserMode) => void;
+
   // Export
   onExportImage: (isTransparentPNG: boolean, aspect: string, res: number, framing: 'fit' | 'view') => void;
-  onExport3D: (format: 'stl' | 'gltf', baseStyle: 'solid' | 'surface', gridRes: number) => void;
+  onExport3D: (format: 'stl' | 'gltf', baseStyle: BaseStyle, gridRes: number) => void;
   exportStatus?: string;
 }
 
@@ -97,16 +113,47 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onExportImage,
   onExport3D,
   exportStatus,
+  onGenerateSigil,
+  onAddSpikes,
+  sigilStyle,
+  onSigilStyleChange,
+  toolMode,
+  onToolModeChange,
+  eraserSize,
+  onEraserSizeChange,
+  eraserMode,
+  onEraserModeChange,
 }) => {
   const [activeTab, setActiveTab] = useState<'brush' | 'chrome' | 'comp' | 'ref' | 'export'>('brush');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // 1-Step confirmation for destructive Clear action (UX-03)
+  const [clearConfirming, setClearConfirming] = useState<boolean>(false);
+  const clearTimerRef = React.useRef<number | null>(null);
+
+  const handleClearClick = () => {
+    if (clearConfirming) {
+      if (clearTimerRef.current !== null) {
+        window.clearTimeout(clearTimerRef.current);
+        clearTimerRef.current = null;
+      }
+      setClearConfirming(false);
+      onClear();
+    } else {
+      setClearConfirming(true);
+      clearTimerRef.current = window.setTimeout(() => {
+        setClearConfirming(false);
+        clearTimerRef.current = null;
+      }, 3500);
+    }
+  };
 
   // Export options state
   const [expAspect, setExpAspect] = useState<string>('1:1');
   const [expRes, setExpRes] = useState<number>(2048);
   const [expFraming, setExpFraming] = useState<'fit' | 'view'>('fit');
-  const [exp3dBase, setExp3dBase] = useState<'solid' | 'surface'>('solid');
-  const [exp3dRes, setExp3dRes] = useState<number>(256);
+  const [exp3dBase, setExp3dBase] = useState<BaseStyle>('extruded');
+  const [exp3dRes, setExp3dRes] = useState<number>(384);
 
   const brushDefs = PARAM_DEFS.filter((d) => d.category === 'brush');
   const chromeDefs = PARAM_DEFS.filter((d) => d.category === 'chrome');
@@ -114,76 +161,75 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
   return (
     <div id="panel">
-      {/* Vibe & Style Deck Header */}
+      {/* Vibe & Style Deck Header (UX-06 uncrowded layout) */}
       <div className="vibe-card">
         <div className="vibe-header">
           <span className="vibe-title">Aesthetic Vibe</span>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {onOpenShortcuts && (
-              <button
-                className="shortcuts-trigger-btn"
-                onClick={onOpenShortcuts}
-                title="Keyboard Shortcuts (? or /)"
-                style={{
-                  padding: '2px 7px',
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  borderRadius: '4px',
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.18)',
-                  color: 'var(--readout-color)',
-                  cursor: 'pointer',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                ⌨ Keys
-              </button>
-            )}
-            <span className="vibe-badge" id="vibeBadge">
-              {vibeData.badge || 'VIBE'}
-            </span>
-          </div>
+          {onOpenShortcuts && (
+            <button
+              className="shortcuts-trigger-btn"
+              onClick={onOpenShortcuts}
+              title="Keyboard Shortcuts (? or /)"
+            >
+              Shortcuts (?)
+            </button>
+          )}
         </div>
-        <select
-          id="vibeSel"
-          value={currentVibe}
-          onChange={(e) => onVibeChange(e.target.value)}
-        >
-          {Object.entries(PAL).map(([key, item]) => (
-            <option key={key} value={key}>
-              {item.name || key}
-            </option>
-          ))}
-        </select>
+        <div className="vibe-select-row">
+          <select
+            id="vibeSel"
+            value={currentVibe}
+            onChange={(e) => onVibeChange(e.target.value)}
+          >
+            {Object.entries(PAL).map(([key, item]) => (
+              <option key={key} value={key}>
+                {item.name || key}
+              </option>
+            ))}
+          </select>
+          <span className="vibe-badge" id="vibeBadge">
+            {vibeData.badge || 'VIBE'}
+          </span>
+        </div>
       </div>
 
-      {/* Tactile Category Tabs */}
-      <div className="tab-bar">
+      {/* Segmented Mode Switcher (UX-02) */}
+      <div className="tab-bar segmented-control" role="tablist">
         <button
+          role="tab"
+          aria-selected={activeTab === 'brush'}
           className={`tab-btn ${activeTab === 'brush' ? 'active' : ''}`}
           onClick={() => setActiveTab('brush')}
         >
           Brush
         </button>
         <button
+          role="tab"
+          aria-selected={activeTab === 'chrome'}
           className={`tab-btn ${activeTab === 'chrome' ? 'active' : ''}`}
           onClick={() => setActiveTab('chrome')}
         >
           Chrome
         </button>
         <button
+          role="tab"
+          aria-selected={activeTab === 'comp'}
           className={`tab-btn ${activeTab === 'comp' ? 'active' : ''}`}
           onClick={() => setActiveTab('comp')}
         >
           Comp
         </button>
         <button
+          role="tab"
+          aria-selected={activeTab === 'ref'}
           className={`tab-btn ${activeTab === 'ref' ? 'active' : ''}`}
           onClick={() => setActiveTab('ref')}
         >
           Ref
         </button>
         <button
+          role="tab"
+          aria-selected={activeTab === 'export'}
           className={`tab-btn ${activeTab === 'export' ? 'active' : ''}`}
           onClick={() => setActiveTab('export')}
         >
@@ -194,37 +240,87 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       {/* Tab 1: Brush */}
       {activeTab === 'brush' && (
         <div id="tab-brush" className="tab-pane active">
-          {/* Zoom & Pan Controls */}
-          <div className="zoom-bar">
-            <button id="btnZoomOut" title="Zoom Out (Wheel Down)" onClick={onZoomOut}>
-              −
-            </button>
-            <button id="btnZoomReset" title="Reset Zoom" onClick={onZoomReset}>
-              {Math.round(zoomScale * 100)}%
-            </button>
-            <button id="btnZoomIn" title="Zoom In (Wheel Up)" onClick={onZoomIn}>
-              +
+          {/* Zoom & Pan Viewport Tools (UX-02 distinct grouping) */}
+          <div className="viewport-tools">
+            <span className="viewport-label">Viewport</span>
+            <div className="zoom-bar">
+              <button id="btnZoomOut" title="Zoom Out (Wheel Down)" onClick={onZoomOut}>
+                −
+              </button>
+              <button id="btnZoomReset" title="Reset Zoom to 100%" onClick={onZoomReset}>
+                {Math.round(zoomScale * 100)}%
+              </button>
+              <button id="btnZoomIn" title="Zoom In (Wheel Up)" onClick={onZoomIn}>
+                +
+              </button>
+              <button
+                id="btnPanMode"
+                className={panMode ? 'is-active' : ''}
+                title="Pan Canvas (or Hold Spacebar)"
+                onClick={onTogglePanMode}
+              >
+                Pan
+              </button>
+            </div>
+          </div>
+
+          {/* Tool Selector: Brush vs Eraser (No emojis) */}
+          <div className="tool-selector">
+            <button
+              className={`tool-btn ${toolMode === 'brush' ? 'is-active' : ''}`}
+              onClick={() => onToolModeChange('brush')}
+              title="Draw Liquid Chrome Strokes (Shortcut: B)"
+            >
+              Brush
             </button>
             <button
-              id="btnPanMode"
-              className={panMode ? 'is-active' : ''}
-              title="Pan Canvas (or Hold Spacebar)"
-              onClick={onTogglePanMode}
+              className={`tool-btn ${toolMode === 'eraser' ? 'is-active' : ''}`}
+              onClick={() => onToolModeChange('eraser')}
+              title="Eraser Brush (Shortcut: E)"
             >
-              Pan
+              Eraser
             </button>
           </div>
 
-          <div id="rows-brush">
-            {brushDefs.map((def) => (
-              <SliderRow
-                key={def.key}
-                def={def}
-                value={params[def.key]}
-                onChange={onParamChange}
-              />
-            ))}
-          </div>
+          {toolMode === 'eraser' ? (
+            <div id="rows-eraser">
+              <div className="row">
+                <label>
+                  Eraser Size <span>{Math.round(eraserSize)}px</span>
+                </label>
+                <input
+                  type="range"
+                  min="6"
+                  max="120"
+                  step="2"
+                  value={eraserSize}
+                  onChange={(e) => onEraserSizeChange(parseFloat(e.target.value))}
+                />
+              </div>
+
+              <div className="row">
+                <label>Eraser Mode</label>
+                <select
+                  value={eraserMode}
+                  onChange={(e) => onEraserModeChange(e.target.value as EraserMode)}
+                >
+                  <option value="slice">Slice &amp; Carve (Split &amp; Taper)</option>
+                  <option value="stroke">Whole Stroke (Delete on Touch)</option>
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div id="rows-brush">
+              {brushDefs.map((def) => (
+                <SliderRow
+                  key={def.key}
+                  def={def}
+                  value={params[def.key]}
+                  onChange={onParamChange}
+                />
+              ))}
+            </div>
+          )}
 
           <div className="row">
             <label>Symmetry</label>
@@ -241,23 +337,70 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </select>
           </div>
 
-          <div className="buttons">
-            <button id="undo" onClick={onUndo} title="Undo Stroke (Ctrl+Z)">
-              Undo
+          {/* Procedural Sigil Generator with Spikes */}
+          <div className="row" style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+            <label>Sigil Generator</label>
+            <select
+              value={sigilStyle}
+              onChange={(e) => onSigilStyleChange(e.target.value as SigilStyle)}
+              title="Select Procedural Sigil Aesthetic"
+            >
+              <option value="cyber-gothic">Cyber Gothic (Ribs &amp; Stinger)</option>
+              <option value="bio-mecha">Bio-Mecha (Fin Blades &amp; Barbs)</option>
+              <option value="radial-seal">Radial Seal (Occult Mandala)</option>
+              <option value="minimal-blade">Minimal Blade (Scythe Thorns)</option>
+            </select>
+          </div>
+
+          <div className="buttons w" style={{ marginTop: 6, marginBottom: 8 }}>
+            <button
+              id="btnRandomSigil"
+              onClick={() => onGenerateSigil(sigilStyle)}
+              title="Generate Procedural Sigil on Random Path with Spikes (Shortcut: R)"
+              style={{
+                background: 'linear-gradient(180deg, #443763 0%, #2b2145 48%, #1c1530 52%, #241a3d 100%)',
+                borderTopColor: '#a183fa',
+                color: '#ece4ff',
+              }}
+            >
+              Random Sigil
             </button>
-            {onRedo && (
+            {onAddSpikes && (
               <button
-                id="redo"
-                onClick={onRedo}
-                title="Redo Stroke (Ctrl+Shift+Z / Ctrl+Y)"
-                disabled={!canRedo}
-                style={{ opacity: canRedo ? 1 : 0.4 }}
+                id="btnAddSpikes"
+                onClick={onAddSpikes}
+                title="Attach Thorn Spikes to Most Recent Stroke (Shortcut: Shift+R)"
               >
-                Redo
+                Add Spikes
               </button>
             )}
-            <button id="clear" onClick={onClear} title="Clear Canvas (Shift+C)">
-              Clear
+          </div>
+
+          {/* Action Row: UNDO/REDO paired on left, CLEAR isolated on right with 1-step confirm (UX-03) */}
+          <div className="buttons history-actions">
+            <div className="undo-redo-group">
+              <button id="undo" onClick={onUndo} title="Undo Stroke (Ctrl+Z)">
+                Undo
+              </button>
+              {onRedo && (
+                <button
+                  id="redo"
+                  onClick={onRedo}
+                  title="Redo Stroke (Ctrl+Shift+Z / Ctrl+Y)"
+                  disabled={!canRedo}
+                  style={{ opacity: canRedo ? 1 : 0.4 }}
+                >
+                  Redo
+                </button>
+              )}
+            </div>
+            <button
+              id="clear"
+              className={`clear-btn ${clearConfirming ? 'confirming' : ''}`}
+              onClick={handleClearClick}
+              title={clearConfirming ? 'Click again to confirm wipe canvas' : 'Clear Canvas (Shift+C)'}
+            >
+              {clearConfirming ? 'Confirm?' : 'Clear'}
             </button>
           </div>
         </div>
@@ -543,13 +686,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
           <div className="export-section-title">3D Model &amp; Print</div>
           <div className="row">
-            <label>Base Style</label>
+            <label>3D Style</label>
             <select
               value={exp3dBase}
-              onChange={(e) => setExp3dBase(e.target.value as 'solid' | 'surface')}
+              onChange={(e) => setExp3dBase(e.target.value as BaseStyle)}
             >
-              <option value="solid">Solid Plinth (Watertight 3D Print)</option>
-              <option value="surface">Relief Surface (Mesh Only)</option>
+              <option value="extruded">Extruded Sigil (Flat SVG/PNG Style - No Brim)</option>
+              <option value="sigil">Chiseled 3D Sigil (Sculpted Relief - No Brim)</option>
+              <option value="sigil-surface">Chiseled Surface (Mesh Only - No Brim)</option>
+              <option value="solid">Solid Plinth (With Base Block)</option>
+              <option value="surface">Relief Surface (With Base Grid)</option>
             </select>
           </div>
 
@@ -559,15 +705,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               value={exp3dRes}
               onChange={(e) => setExp3dRes(parseInt(e.target.value, 10))}
             >
-              <option value="256">Fine (256x256 Grid)</option>
-              <option value="180">Standard (180x180 Grid)</option>
-              <option value="360">Ultra Fine (360x360 Grid)</option>
+              <option value="384">Ultra Detail (384x384 - Recommended)</option>
+              <option value="512">Master HD (512x512)</option>
+              <option value="256">Standard (256x256)</option>
+              <option value="180">Draft (180x180)</option>
             </select>
           </div>
 
           <div className="buttons" style={{ marginTop: 6 }}>
             <button
-              className="export-btn"
+              className="export-btn export-btn-accent"
               onClick={() => onExport3D('stl', exp3dBase, exp3dRes)}
             >
               STL (.stl 3D Print)
@@ -580,7 +727,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </button>
           </div>
           <div className="export-hint">
-            STL produces watertight solid manifold mesh for 3D slicers. GLTF includes metallic PBR chrome material for 3D viewers and Blender.
+            "Extruded Sigil" produces a clean, flat 3D solid from the exact vector stroke silhouette (like extruding an SVG/PNG), with vertical walls and zero support brim.
           </div>
 
           {exportStatus && <div className="export-status">{exportStatus}</div>}

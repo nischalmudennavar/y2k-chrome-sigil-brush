@@ -39,6 +39,7 @@ export interface VibePreset {
   ground: [number, number, number];
   bg: [number, number, number];
   iri: number;
+  flat?: boolean;
   params: Partial<BrushParams>;
   theme: VibeColors;
 }
@@ -55,6 +56,13 @@ export interface Stroke {
   group: any;
   params: BrushParams;
   symmetry: SymmetryMode;
+}
+
+export interface HistoryStep {
+  added: Stroke[];
+  removed: Stroke[];
+  label?: string;
+  timestamp?: number;
 }
 
 export interface ViewTransform {
@@ -84,6 +92,9 @@ export type SymmetryMode =
   | 'Radial 4'
   | 'Radial 6'
   | 'Radial 8';
+
+export type ToolMode = 'brush' | 'eraser';
+export type EraserMode = 'slice' | 'stroke';
 
 export interface ParamDef {
   key: keyof BrushParams;
