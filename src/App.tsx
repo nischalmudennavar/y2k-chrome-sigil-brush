@@ -25,9 +25,9 @@ import {
 } from './core/sigilGenerator';
 
 export const App: React.FC = () => {
-  const [currentVibe, setCurrentVibe] = useState<string>('Pink K-Pop');
+  const [currentVibe, setCurrentVibe] = useState<string>('Black Mercury');
   const [params, setParams] = useState<BrushParams>(() => {
-    const initialVibe = PAL['Pink K-Pop'];
+    const initialVibe = PAL['Black Mercury'] || PAL['Pink K-Pop'];
     return {
       ...DEFAULT_PARAMS,
       ...(initialVibe.params || {}),
@@ -101,7 +101,7 @@ export const App: React.FC = () => {
   }, []);
 
   // Update theme colors and CSS variables
-  const activeVibe = PAL[currentVibe] || PAL['Pink K-Pop'];
+  const activeVibe = PAL[currentVibe] || PAL['Black Mercury'] || PAL['Pink K-Pop'];
   (window as any).__ACTIVE_VIBE__ = activeVibe;
 
   const applyVibeStyles = useCallback((vibeName: string) => {
@@ -217,7 +217,9 @@ export const App: React.FC = () => {
             } else {
               pipelineRef.current?.root.add(s.group);
             }
-            strokesRef.current.push(s);
+            if (!strokesRef.current.includes(s)) {
+              strokesRef.current.push(s);
+            }
           });
         }
       } else {
@@ -250,7 +252,9 @@ export const App: React.FC = () => {
             } else {
               pipelineRef.current?.root.add(s.group);
             }
-            strokesRef.current.push(s);
+            if (!strokesRef.current.includes(s)) {
+              strokesRef.current.push(s);
+            }
           });
         }
       }

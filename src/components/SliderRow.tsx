@@ -8,10 +8,14 @@ interface SliderRowProps {
 }
 
 export const SliderRow: React.FC<SliderRowProps> = ({ def, value, onChange }) => {
+  const displayValue = Number.isInteger(value)
+    ? value.toString()
+    : value.toFixed(def.step < 0.1 ? 2 : 1);
+
   return (
     <div className="row">
       <label>
-        {def.label} <span>{value}</span>
+        {def.label} <span>{displayValue}</span>
       </label>
       <input
         type="range"

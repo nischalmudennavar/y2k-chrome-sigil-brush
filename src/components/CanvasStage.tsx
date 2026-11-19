@@ -198,8 +198,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     let curStrokeDirty = false;
     let isErasing = false;
     let lastErasePos = { x: 0, y: 0 };
-    let accumRemoved: Stroke[] = [];
-    let accumAdded: Stroke[] = [];
+    let initialStrokesBeforeErase: Stroke[] = [];
     let orbDrag: { x: number; y: number } | null = null;
     let isPanning = false;
     let panStart = { x: 0, y: 0 };
@@ -309,9 +308,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       if (toolModeRef.current === 'eraser') {
         isErasing = true;
         lastErasePos = p0;
-        accumRemoved = [];
-        accumAdded = [];
-        const res = eraseAtSegment(
+        initialStrokesBeforeErase = [...strokesRef.current];
+        eraseAtSegment(
           strokesRef.current,
           p0,
           p0,
@@ -321,10 +319,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           window.innerHeight,
           pipeline
         );
-        if (res.modified) {
-          accumRemoved.push(...res.removedStrokes);
-          accumAdded.push(...res.addedStrokes);
-        }
         return;
       }
 
@@ -401,7 +395,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         (co.length ? co : [e]).forEach((c: PointerEvent) => {
           const p = getCanvasPos(c.clientX, c.clientY);
           if (Math.hypot(p.x - lastErasePos.x, p.y - lastErasePos.y) < 2 / viewRef.current.scale) return;
-          const res = eraseAtSegment(
+          eraseAtSegment(
             strokesRef.current,
             lastErasePos,
             p,
@@ -411,10 +405,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             window.innerHeight,
             pipeline
           );
-          if (res.modified) {
-            accumRemoved.push(...res.removedStrokes);
-            accumAdded.push(...res.addedStrokes);
-          }
           lastErasePos = p;
         });
         return;
@@ -457,11 +447,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       }
       if (isErasing) {
         isErasing = false;
-        if (accumRemoved.length > 0 || accumAdded.length > 0) {
-          onErasePerformed?.(accumRemoved, accumAdded);
+        const trulyRemoved = initialStrokesBeforeErase.filter((s) => !strokesRef.current.includes(s));
+        const trulyAdded = strokesRef.current.filter((s) => !initialStrokesBeforeErase.includes(s));
+        if (trulyRemoved.length > 0 || trulyAdded.length > 0) {
+          onErasePerformed?.(trulyRemoved, trulyAdded);
         }
-        accumRemoved = [];
-        accumAdded = [];
+        initialStrokesBeforeErase = [];
         pipeline.dirty = true;
         setInteractiveMode(false);
         return;

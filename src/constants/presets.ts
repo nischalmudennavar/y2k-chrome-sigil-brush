@@ -59,6 +59,47 @@ export const SYMMETRY_MODES: SymmetryMode[] = [
 ];
 
 export const PAL: Record<string, VibePreset> = {
+  'Black Mercury': {
+    name: 'Black Mercury (Molten Obsidian on White)',
+    badge: 'MERCURY',
+    sky: [0.05, 0.05, 0.07],
+    hor: [0.98, 0.99, 1.0],
+    band: [0.22, 0.24, 0.28],
+    ground: [0.01, 0.01, 0.02],
+    bg: [1.0, 1.0, 1.0],
+    iri: 0.03,
+    params: {
+      width: 18,
+      taper: 0.65,
+      pressure: 0.9,
+      bevel: 4.5,
+      chisel: 0.35,
+      speed: 0.6,
+      iri: 0.03,
+      fusion: 0.7,
+      depth: 7.0,
+      glow: 0.0,
+      aberration: 0.0,
+      noise: 0.0,
+    },
+    theme: {
+      accent: '#e6edf8',
+      accentGlow: 'rgba(255, 255, 255, 0.65)',
+      accentTrack: 'rgba(255, 255, 255, 0.16)',
+      accentAmbient: 'rgba(220, 230, 255, 0.2)',
+      bg: '#ffffff',
+      panelBg:
+        'linear-gradient(168deg, rgba(22, 25, 32, 0.96) 0%, rgba(14, 16, 21, 0.96) 42%, rgba(8, 10, 14, 0.98) 100%)',
+      panelBorder: 'rgba(0, 0, 0, 0.2)',
+      panelBorderTop: 'rgba(255, 255, 255, 0.35)',
+      readoutColor: '#9ee2ff',
+      readoutBg: '#080a10',
+      tabActiveBg: 'linear-gradient(180deg, #303746 0%, #1d212b 50%, #13161c 100%)',
+      tabBorderTop: '#8da0bc',
+      toggleActiveBg: 'linear-gradient(180deg, #303746 0%, #1d212b 50%, #13161c 100%)',
+      guideColor: 'rgba(0, 0, 0, 0.25)',
+    },
+  },
   'Mono Trace': {
     name: 'Mono Trace (Vector B&W - Black on White)',
     badge: 'TRACE',

@@ -161,36 +161,33 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
   return (
     <div id="panel">
-      {/* Vibe & Style Deck Header (UX-06 uncrowded layout) */}
-      <div className="vibe-card">
-        <div className="vibe-header">
-          <span className="vibe-title">Aesthetic Vibe</span>
-          {onOpenShortcuts && (
-            <button
-              className="shortcuts-trigger-btn"
-              onClick={onOpenShortcuts}
-              title="Keyboard Shortcuts (? or /)"
-            >
-              Shortcuts (?)
-            </button>
-          )}
+      {/* Brand Header: Glowing Y2K NEOTHORN Logo & Shortcut Icon */}
+      <div className="panel-brand-bar">
+        <div className="brand-logo" title="Y2K NEOTHORN Cybernetic Chrome Engine">
+          <span className="brand-logo-text">Y2K NEOTHORN</span>
         </div>
-        <div className="vibe-select-row">
-          <select
-            id="vibeSel"
-            value={currentVibe}
-            onChange={(e) => onVibeChange(e.target.value)}
+        {onOpenShortcuts && (
+          <button
+            className="shortcuts-icon-btn"
+            onClick={onOpenShortcuts}
+            title="Keyboard Shortcuts (? or /)"
+            aria-label="Keyboard Shortcuts"
           >
-            {Object.entries(PAL).map(([key, item]) => (
-              <option key={key} value={key}>
-                {item.name || key}
-              </option>
-            ))}
-          </select>
-          <span className="vibe-badge" id="vibeBadge">
-            {vibeData.badge || 'VIBE'}
-          </span>
-        </div>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+              <path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M6 12h.001M10 12h.001M14 12h.001M18 12h.001M8 16h8" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Segmented Mode Switcher (UX-02) */}
