@@ -67,7 +67,8 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     category: 'Interface',
     items: [
-      { keys: ['Tab', 'or', 'P'], desc: 'Toggle HUD Control Panel' },
+      { keys: ['F1', 'or', 'Shift', 'D'], desc: 'Open Parameter Field Manual & Interactive Lab' },
+      { keys: ['Tab', 'or', 'P'], desc: 'Toggle Sidebar' },
       { keys: ['?', 'or', '/'], desc: 'Show / Hide This Cheat Sheet' },
       { keys: ['Esc'], desc: 'Close Modal / Deselect Tools' },
     ],

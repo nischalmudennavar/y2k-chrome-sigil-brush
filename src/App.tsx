@@ -16,6 +16,7 @@ import { ControlPanel } from './components/ControlPanel';
 import { TimelineDeck } from './components/TimelineDeck';
 import { NoiseOverlay } from './components/NoiseOverlay';
 import { ShortcutsModal } from './components/ShortcutsModal';
+import { DocsModal } from './components/DocsModal';
 import { BaseStyle, export3DModel, exportImage } from './core/export';
 import { buildStrokeMesh } from './core/geometry';
 import {
@@ -50,6 +51,7 @@ export const App: React.FC = () => {
 
   const [panelVisible, setPanelVisible] = useState<boolean>(true);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState<boolean>(false);
+  const [docsModalOpen, setDocsModalOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string>('');
   const toastTimerRef = useRef<number | null>(null);
 
@@ -618,6 +620,11 @@ export const App: React.FC = () => {
           target.isContentEditable);
 
       if (e.key === 'Escape') {
+        if (docsModalOpen) {
+          e.preventDefault();
+          setDocsModalOpen(false);
+          return;
+        }
         if (shortcutsModalOpen) {
           e.preventDefault();
           setShortcutsModalOpen(false);
@@ -635,6 +642,13 @@ export const App: React.FC = () => {
       }
 
       if (isInput) return;
+
+      // Parameter Field Manual / Docs Lab modal (F1 or Shift+D)
+      if (e.key === 'F1' || (e.shiftKey && e.key.toLowerCase() === 'd')) {
+        e.preventDefault();
+        setDocsModalOpen((prev) => !prev);
+        return;
+      }
 
       // Help / Shortcuts modal (? or /)
       if (e.key === '?' || (e.key === '/' && !e.ctrlKey && !e.metaKey)) {
@@ -821,11 +835,11 @@ export const App: React.FC = () => {
         return;
       }
 
-      // Toggle HUD Control Panel (Tab or P)
+      // Toggle Panel (Tab or P)
       if (e.key === 'Tab' || k === 'p') {
         e.preventDefault();
         setPanelVisible((prev) => {
-          showToast(!prev ? 'HUD Panel: Shown' : 'HUD Panel: Hidden (Tab)');
+          showToast(!prev ? 'Panel: Shown' : 'Panel: Hidden (Tab / P)');
           return !prev;
         });
         return;
@@ -1093,15 +1107,23 @@ export const App: React.FC = () => {
           eraserMode={eraserMode}
           onEraserModeChange={setEraserMode}
           onOpenShortcuts={() => setShortcutsModalOpen(true)}
+          onOpenDocs={() => setDocsModalOpen(true)}
+          onToggleCollapse={() => {
+            setPanelVisible(false);
+            showToast('Panel: Hidden (Tab / P)');
+          }}
         />
       ) : (
         <button
           className="panel-toggle-btn"
-          onClick={() => setPanelVisible(true)}
-          title="Show HUD Control Panel (Tab or P)"
+          onClick={() => {
+            setPanelVisible(true);
+            showToast('Panel: Shown');
+          }}
+          title="Show Controls (Tab or P)"
         >
-          <span>◧</span>
-          <span>Show HUD (Tab)</span>
+          <span>◨</span>
+          <span>Controls (Tab)</span>
         </button>
       )}
 
@@ -1130,6 +1152,34 @@ export const App: React.FC = () => {
       <ShortcutsModal
         isOpen={shortcutsModalOpen}
         onClose={() => setShortcutsModalOpen(false)}
+      />
+
+      <DocsModal
+        isOpen={docsModalOpen}
+        onClose={() => setDocsModalOpen(false)}
+        activeVibe={activeVibe}
+        currentVibeName={currentVibe}
+        initialParams={params}
+        canvasStrokes={strokesRef.current}
+        onApplyParams={(newParams) => {
+          setParams(newParams);
+          strokesRef.current.forEach((s) => {
+            s.params = { ...newParams };
+            if (pipelineRef.current) {
+              buildStrokeMesh(
+                pipelineRef.current,
+                s,
+                window.innerWidth,
+                window.innerHeight,
+                false
+              );
+            }
+          });
+          if (pipelineRef.current) {
+            pipelineRef.current.dirty = true;
+          }
+          showToast('✨ Applied Playground Parameters to Canvas');
+        }}
       />
     </>
   );

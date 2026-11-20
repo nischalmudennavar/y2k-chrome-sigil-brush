@@ -373,4 +373,11 @@ export class RenderPipeline {
     this.root.scale.set(view.scale, view.scale, 1);
     this.dirty = true;
   }
+
+  dispose() {
+    [this.maskRT, this.tmpRT, this.cmbRT, this.sceneRT, ...this.blurLayers].forEach((rt) =>
+      rt?.dispose()
+    );
+    this.renderer.dispose();
+  }
 }
