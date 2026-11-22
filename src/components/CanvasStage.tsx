@@ -204,24 +204,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     let panStart = { x: 0, y: 0 };
     let isSpaceDown = false;
 
-    let interactiveTimeout: number | null = null;
-    const setInteractiveMode = (active: boolean) => {
-      if (active) {
-        if (interactiveTimeout !== null) {
-          window.clearTimeout(interactiveTimeout);
-          interactiveTimeout = null;
-        }
-        pipeline.setInteractiveQuality(true);
-      } else {
-        if (interactiveTimeout !== null) {
-          window.clearTimeout(interactiveTimeout);
-        }
-        interactiveTimeout = window.setTimeout(() => {
-          interactiveTimeout = null;
-          pipeline.setInteractiveQuality(false);
-          pipeline.dirty = true;
-        }, 250);
-      }
+    const setInteractiveMode = (_active: boolean) => {
+      // Dynamic quality is handled on each animation frame via isInteracting without GPU texture churn
     };
 
     const activePointers = new Map<number, { x: number; y: number }>();
@@ -624,9 +608,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     return () => {
       cancelAnimationFrame(animFrameId);
-      if (interactiveTimeout !== null) {
-        window.clearTimeout(interactiveTimeout);
-      }
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);

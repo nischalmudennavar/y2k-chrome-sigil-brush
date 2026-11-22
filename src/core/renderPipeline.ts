@@ -190,6 +190,24 @@ export class RenderPipeline {
     const fw = Math.max(2, mw >> 1);
     const fh = Math.max(2, mh >> 1);
 
+    // Reuse existing GPU render targets if dimensions have not changed
+    const needsRTRealloc =
+      !this.maskRT ||
+      this.maskRT.width !== mw ||
+      this.maskRT.height !== mh ||
+      !this.tmpRT ||
+      this.tmpRT.width !== fw ||
+      this.tmpRT.height !== fh ||
+      this.blurLayers.length < 3;
+
+    if (!needsRTRealloc) {
+      this.cam3.aspect = w / h;
+      this.cam3.updateProjectionMatrix();
+      this.d0 = (h / 2) / Math.tan((this.cam3.fov * Math.PI) / 360);
+      this.dirty = true;
+      return;
+    }
+
     [this.maskRT, this.tmpRT, this.cmbRT, this.sceneRT, ...this.blurLayers].forEach((rt) =>
       rt?.dispose()
     );
@@ -227,13 +245,8 @@ export class RenderPipeline {
     this.dirty = true;
   }
 
-  setInteractiveQuality(interactive: boolean) {
-    const maxPr = Math.min(window.devicePixelRatio || 1, 2);
-    if (maxPr <= 1.25) return;
-    const targetPr = interactive ? 1.0 : maxPr;
-    if (Math.abs(this.currentPr - targetPr) > 0.05 && this.width > 0 && this.height > 0) {
-      this.resize(this.width, this.height, targetPr);
-    }
+  setInteractiveQuality(_interactive: boolean) {
+    // Retain pre-allocated GPU render targets during drawing to eliminate texture churn and GC pauses.
   }
 
   computeFields(fast: boolean = false) {

@@ -133,6 +133,10 @@ interface ControlPanelProps {
   currentVibe: string;
   onVibeChange: (vibeName: string) => void;
   vibeData: VibePreset;
+  bgColor: string;
+  onBgColorChange: (color: string) => void;
+  onResetBgColor?: () => void;
+  isCustomBg?: boolean;
 
   // Symmetry
   symmetry: SymmetryMode;
@@ -204,6 +208,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   currentVibe,
   onVibeChange,
   vibeData,
+  bgColor,
+  onBgColorChange,
+  onResetBgColor,
+  isCustomBg = false,
   symmetry,
   onSymmetryChange,
   onUndo,
@@ -426,6 +434,78 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Canvas Background Color Picker */}
+              <div className="row color-picker-row">
+                <div className="color-picker-label-group">
+                  <label htmlFor="bg-color-picker">Canvas Background</label>
+                  {isCustomBg && onResetBgColor && (
+                    <button
+                      className="reset-color-btn"
+                      onClick={onResetBgColor}
+                      title="Reset background to vibe default"
+                      type="button"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+                <div className="color-picker-control">
+                  <div
+                    className="color-swatch-wrapper"
+                    style={{ backgroundColor: bgColor }}
+                    title="Click to pick background color"
+                  >
+                    <input
+                      id="bg-color-picker"
+                      type="color"
+                      className="hidden-color-input"
+                      value={bgColor}
+                      onChange={(e) => onBgColorChange(e.target.value)}
+                      title="Pick custom background color"
+                      aria-label="Pick canvas background color"
+                    />
+                  </div>
+                  <div className="color-hex-badge" title="Current background hex code">
+                    <span className="hex-prefix">#</span>
+                    <span className="hex-value">{bgColor.replace('#', '').toUpperCase()}</span>
+                  </div>
+                  <div className="quick-color-presets">
+                    <button
+                      type="button"
+                      className={`quick-color-dot ${bgColor.toLowerCase() === '#000000' ? 'is-active' : ''}`}
+                      style={{ backgroundColor: '#000000' }}
+                      onClick={() => onBgColorChange('#000000')}
+                      title="Pitch Black (#000000)"
+                      aria-label="Pitch Black"
+                    />
+                    <button
+                      type="button"
+                      className={`quick-color-dot ${bgColor.toLowerCase() === '#ffffff' ? 'is-active' : ''}`}
+                      style={{ backgroundColor: '#ffffff' }}
+                      onClick={() => onBgColorChange('#ffffff')}
+                      title="Pure White (#ffffff)"
+                      aria-label="Pure White"
+                    />
+                    <button
+                      type="button"
+                      className={`quick-color-dot ${bgColor.toLowerCase() === '#0c1017' ? 'is-active' : ''}`}
+                      style={{ backgroundColor: '#0c1017' }}
+                      onClick={() => onBgColorChange('#0c1017')}
+                      title="Cyber Dark Slate (#0c1017)"
+                      aria-label="Cyber Dark Slate"
+                    />
+                    <button
+                      type="button"
+                      className={`quick-color-dot ${bgColor.toLowerCase() === '#180a22' ? 'is-active' : ''}`}
+                      style={{ backgroundColor: '#180a22' }}
+                      onClick={() => onBgColorChange('#180a22')}
+                      title="Deep Void Violet (#180a22)"
+                      aria-label="Deep Void Violet"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* 3D & Animation Display Toggles */}

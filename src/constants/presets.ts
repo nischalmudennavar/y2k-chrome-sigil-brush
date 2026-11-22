@@ -554,3 +554,24 @@ export const PAL: Record<string, VibePreset> = {
     },
   },
 };
+
+export function hexToRgb01(hex: string): [number, number, number] {
+  let clean = hex.replace('#', '').trim();
+  if (clean.length === 3) {
+    clean = clean.split('').map((c) => c + c).join('');
+  }
+  const num = parseInt(clean, 16);
+  if (isNaN(num)) return [0, 0, 0];
+  const r = ((num >> 16) & 255) / 255;
+  const g = ((num >> 8) & 255) / 255;
+  const b = (num & 255) / 255;
+  return [r, g, b];
+}
+
+export function rgb01ToHex(rgb?: [number, number, number] | null): string {
+  if (!rgb || rgb.length < 3) return '#000000';
+  const to255 = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255)));
+  const toHex = (n: number) => n.toString(16).padStart(2, '0');
+  return `#${toHex(to255(rgb[0]))}${toHex(to255(rgb[1]))}${toHex(to255(rgb[2]))}`;
+}
+

@@ -8,8 +8,9 @@ import {
   SymmetryMode,
   ToolMode,
   ViewTransform,
+  VibePreset,
 } from './types';
-import { DEFAULT_PARAMS, LIVE_PARAM_KEYS, PAL, SYMMETRY_MODES } from './constants/presets';
+import { DEFAULT_PARAMS, LIVE_PARAM_KEYS, PAL, SYMMETRY_MODES, hexToRgb01, rgb01ToHex } from './constants/presets';
 import { RenderPipeline } from './core/renderPipeline';
 import { CanvasStage } from './components/CanvasStage';
 import { ControlPanel } from './components/ControlPanel';
@@ -27,6 +28,7 @@ import {
 
 export const App: React.FC = () => {
   const [currentVibe, setCurrentVibe] = useState<string>('Black Mercury');
+  const [customBgColor, setCustomBgColor] = useState<string | null>(null);
   const [params, setParams] = useState<BrushParams>(() => {
     const initialVibe = PAL['Black Mercury'] || PAL['Pink K-Pop'];
     return {
@@ -103,10 +105,24 @@ export const App: React.FC = () => {
   }, []);
 
   // Update theme colors and CSS variables
-  const activeVibe = PAL[currentVibe] || PAL['Black Mercury'] || PAL['Pink K-Pop'];
+  const baseVibe = PAL[currentVibe] || PAL['Black Mercury'] || PAL['Pink K-Pop'];
+  const activeVibe = React.useMemo<VibePreset>(() => {
+    if (!customBgColor) return baseVibe;
+    const rgb = hexToRgb01(customBgColor);
+    return {
+      ...baseVibe,
+      bg: rgb,
+      theme: {
+        ...baseVibe.theme,
+        bg: customBgColor,
+      },
+    };
+  }, [baseVibe, customBgColor]);
   (window as any).__ACTIVE_VIBE__ = activeVibe;
 
-  const applyVibeStyles = useCallback((vibeName: string) => {
+  const currentBgHex = customBgColor || activeVibe.theme?.bg || rgb01ToHex(activeVibe.bg);
+
+  const applyVibeStyles = useCallback((vibeName: string, customBg?: string | null) => {
     const pData = PAL[vibeName];
     if (!pData) return;
     const t = pData.theme || {};
@@ -115,10 +131,11 @@ export const App: React.FC = () => {
     if (t.accentGlow) rootStyle.setProperty('--accent-glow', t.accentGlow);
     if (t.accentTrack) rootStyle.setProperty('--accent-track', t.accentTrack);
     if (t.accentAmbient) rootStyle.setProperty('--accent-ambient', t.accentAmbient);
-    if (t.bg) {
-      rootStyle.setProperty('--bg', t.bg);
-      document.body.style.backgroundColor = t.bg;
-    }
+
+    const bgToApply = customBg || t.bg || rgb01ToHex(pData.bg);
+    rootStyle.setProperty('--bg', bgToApply);
+    document.body.style.backgroundColor = bgToApply;
+
     if (t.panelBg) rootStyle.setProperty('--panel-bg', t.panelBg);
     if (t.panelBorder) rootStyle.setProperty('--panel-border', t.panelBorder);
     if (t.panelBorderTop) rootStyle.setProperty('--panel-border-top', t.panelBorderTop);
@@ -134,26 +151,67 @@ export const App: React.FC = () => {
       document.querySelectorAll('select').forEach((s) => ((s as HTMLElement).style.background = arrow));
     }
 
+    const effectiveVibe: VibePreset = customBg ? {
+      ...pData,
+      bg: hexToRgb01(customBg),
+      theme: { ...pData.theme, bg: customBg },
+    } : pData;
+
     if (pipelineRef.current) {
-      pipelineRef.current.applyTheme(pData);
+      pipelineRef.current.applyTheme(effectiveVibe);
     }
   }, []);
 
   const handleVibeChange = useCallback((vibeName: string) => {
     if (!PAL[vibeName]) return;
     setCurrentVibe(vibeName);
+    setCustomBgColor(null);
     const pData = PAL[vibeName];
     setParams((prev) => ({
       ...prev,
       ...(pData.params || {}),
     }));
-    applyVibeStyles(vibeName);
+    applyVibeStyles(vibeName, null);
     showToast(`Vibe: ${vibeName}`);
   }, [applyVibeStyles, showToast]);
 
+  const handleBgColorChange = useCallback((hex: string) => {
+    setCustomBgColor(hex);
+    const rgb = hexToRgb01(hex);
+    const updatedVibe: VibePreset = {
+      ...activeVibe,
+      bg: rgb,
+      theme: {
+        ...activeVibe.theme,
+        bg: hex,
+      },
+    };
+    (window as any).__ACTIVE_VIBE__ = updatedVibe;
+    document.documentElement.style.setProperty('--bg', hex);
+    document.body.style.backgroundColor = hex;
+    if (pipelineRef.current) {
+      pipelineRef.current.applyTheme(updatedVibe);
+      pipelineRef.current.dirty = true;
+    }
+    showToast(`Background: ${hex.toUpperCase()}`);
+  }, [activeVibe, showToast]);
+
+  const handleResetBgColor = useCallback(() => {
+    setCustomBgColor(null);
+    const defaultHex = baseVibe.theme?.bg || rgb01ToHex(baseVibe.bg);
+    (window as any).__ACTIVE_VIBE__ = baseVibe;
+    document.documentElement.style.setProperty('--bg', defaultHex);
+    document.body.style.backgroundColor = defaultHex;
+    if (pipelineRef.current) {
+      pipelineRef.current.applyTheme(baseVibe);
+      pipelineRef.current.dirty = true;
+    }
+    showToast(`Background: Default (${baseVibe.badge || 'VIBE'})`);
+  }, [baseVibe, showToast]);
+
   useEffect(() => {
-    applyVibeStyles(currentVibe);
-  }, [currentVibe, applyVibeStyles]);
+    applyVibeStyles(currentVibe, customBgColor);
+  }, [currentVibe, customBgColor, applyVibeStyles]);
 
   const handleParamChange = (key: string, value: number) => {
     setParams((prev) => {
@@ -1017,6 +1075,10 @@ export const App: React.FC = () => {
           currentVibe={currentVibe}
           onVibeChange={handleVibeChange}
           vibeData={activeVibe}
+          bgColor={currentBgHex}
+          onBgColorChange={handleBgColorChange}
+          onResetBgColor={handleResetBgColor}
+          isCustomBg={customBgColor !== null}
           symmetry={symmetry}
           onSymmetryChange={setSymmetry}
           onUndo={handleUndo}

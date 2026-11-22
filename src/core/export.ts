@@ -162,6 +162,7 @@ export async function exportImage(
   U.uFT.value.set(1 / expFw, 1 / expFh);
   U.uFS.value = expFS;
   U.uAlphaBg.value = isTransparentPNG ? 0.0 : 1.0;
+  if (vibe.bg) U.uBg.value.set(...vibe.bg);
   U.uFlat.value = vibe.flat ? 1.0 : 0.0;
 
   const glowVal = vibe.flat ? 0 : (params.glow !== undefined ? params.glow : 0.15);
