@@ -112,10 +112,10 @@ export const heightExtractShader = {
       float nh = clamp(rawH * 0.15, 0.0, 1.0);
       float shapedH = mix(rawH, pow(nh, mix(1.0, 0.52, uChisel)) / 0.15, uChisel);
       float norm = clamp(shapedH / 8.0, 0.0, 1.0);
-      float v = norm * 65535.0;
-      float r = floor(v / 256.0) / 255.0;
-      float g = mod(v, 256.0) / 255.0;
-      gl_FragColor = vec4(r, g, 0.0, 1.0);
+      const vec3 bitShifts = vec3(1.0, 255.0, 65025.0);
+      vec3 res = fract(norm * bitShifts);
+      res.xy -= res.yz / 255.0;
+      gl_FragColor = vec4(res, 1.0);
     }
   `,
 };

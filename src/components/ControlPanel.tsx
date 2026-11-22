@@ -302,7 +302,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [expRes, setExpRes] = useState<number>(2048);
   const [expFraming, setExpFraming] = useState<'fit' | 'view'>('fit');
   const [exp3dBase, setExp3dBase] = useState<BaseStyle>('extruded');
-  const [exp3dRes, setExp3dRes] = useState<number>(384);
+  const [exp3dRes, setExp3dRes] = useState<number>(768);
 
   const brushDefs = PARAM_DEFS.filter((d) => d.category === 'brush');
   const chromeDefs = PARAM_DEFS.filter((d) => d.category === 'chrome');
@@ -1091,9 +1091,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   value={exp3dBase}
                   onChange={(e) => setExp3dBase(e.target.value as BaseStyle)}
                 >
-                  <option value="extruded">Extruded Sigil (Flat SVG/PNG Style - No Brim)</option>
-                  <option value="sigil">Chiseled 3D Sigil (Sculpted Relief - No Brim)</option>
-                  <option value="sigil-surface">Chiseled Surface (Mesh Only - No Brim)</option>
+                  <option value="extruded">Vector Extrusion (Ultra Smooth CAD / 3D Print - No Pixels)</option>
+                  <option value="sigil">Chiseled 3D Sigil (Sculpted Relief - Sub-Pixel Smooth)</option>
+                  <option value="sigil-surface">Chiseled Surface (Mesh Only - Sub-Pixel Smooth)</option>
                   <option value="solid">Solid Plinth (With Base Block)</option>
                   <option value="surface">Relief Surface (With Base Grid)</option>
                 </select>
@@ -1104,11 +1104,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <select
                   value={exp3dRes}
                   onChange={(e) => setExp3dRes(parseInt(e.target.value, 10))}
+                  disabled={exp3dBase === 'extruded'}
                 >
-                  <option value="384">Ultra Detail (384x384 - Recommended)</option>
-                  <option value="512">Master HD (512x512)</option>
-                  <option value="256">Standard (256x256)</option>
-                  <option value="180">Draft (180x180)</option>
+                  <option value="1024">Master HD (1024x1024 - Production)</option>
+                  <option value="768">High Detail (768x768 - Recommended)</option>
+                  <option value="512">Standard (512x512)</option>
+                  <option value="384">Draft (384x384)</option>
                 </select>
               </div>
 
@@ -1127,7 +1128,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </button>
               </div>
               <div className="export-hint">
-                "Extruded Sigil" produces a clean, flat 3D solid from the exact vector stroke silhouette (like extruding an SVG/PNG), with vertical walls and zero support brim.
+                {exp3dBase === 'extruded'
+                  ? '✨ Vector Extrusion directly exports mathematically smooth CAD solids from your spline paths (zero rasterization, clean vertical walls, no stair-stepping).'
+                  : '✨ Sculpted styles generate continuous sub-pixel relief with 24-bit heightfield precision and Laplacian boundary smoothing.'}
               </div>
 
               {exportStatus && <div className="export-status">{exportStatus}</div>}
