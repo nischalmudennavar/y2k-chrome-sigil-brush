@@ -184,9 +184,15 @@ interface ControlPanelProps {
 
   // Procedural Generator
   onGenerateSigil: (style?: SigilStyle) => void;
+  onAddThorns?: () => void;
   onAddSpikes?: () => void;
   sigilStyle: SigilStyle;
   onSigilStyleChange: (style: SigilStyle) => void;
+
+  // Selection
+  selectedStrokeIndex?: number | null;
+  onDeselectStroke?: () => void;
+  onDeleteSelectedStroke?: () => void;
 
   // Tool & Eraser
   toolMode: ToolMode;
@@ -248,9 +254,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onExport3D,
   exportStatus,
   onGenerateSigil,
+  onAddThorns,
   onAddSpikes,
   sigilStyle,
   onSigilStyleChange,
+  selectedStrokeIndex = null,
+  onDeselectStroke,
+  onDeleteSelectedStroke,
   toolMode,
   onToolModeChange,
   eraserSize,
@@ -592,6 +602,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   Brush
                 </button>
                 <button
+                  className={`tool-btn ${toolMode === 'select' ? 'is-active' : ''}`}
+                  onClick={() => onToolModeChange('select')}
+                  title="Select & Control Stroke Aspects (Shortcut: S)"
+                >
+                  Select
+                </button>
+                <button
                   className={`tool-btn ${toolMode === 'eraser' ? 'is-active' : ''}`}
                   onClick={() => onToolModeChange('eraser')}
                   title="Eraser Brush (Shortcut: E)"
@@ -599,6 +616,42 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   Eraser
                 </button>
               </div>
+
+              {/* Selected Stroke Active Inspector Banner */}
+              {selectedStrokeIndex !== null && selectedStrokeIndex !== undefined && (
+                <div className="selected-stroke-deck">
+                  <div className="selected-stroke-row">
+                    <span className="selected-badge">
+                      <span className="pulse-dot" /> STROKE #{selectedStrokeIndex + 1}
+                    </span>
+                    <div className="selected-btn-group">
+                      {onDeleteSelectedStroke && (
+                        <button
+                          type="button"
+                          className="sel-action-btn sel-delete-btn"
+                          onClick={onDeleteSelectedStroke}
+                          title="Delete selected stroke (Delete / Backspace)"
+                        >
+                          Delete
+                        </button>
+                      )}
+                      {onDeselectStroke && (
+                        <button
+                          type="button"
+                          className="sel-action-btn sel-done-btn"
+                          onClick={onDeselectStroke}
+                          title="Deselect stroke (Escape)"
+                        >
+                          Done ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="selected-stroke-desc">
+                    Sliders below actively control width and aspects for this stroke in real-time.
+                  </div>
+                </div>
+              )}
 
               {toolMode === 'eraser' ? (
                 <div id="rows-eraser">
@@ -708,7 +761,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </select>
               </div>
 
-              <div className="buttons w" style={{ marginTop: 8, marginBottom: 0 }}>
+              <div className="buttons w sigil-actions-row" style={{ marginTop: 8, marginBottom: 0 }}>
                 <button
                   id="btnRandomSigil"
                   onClick={() => onGenerateSigil(sigilStyle)}
@@ -721,13 +774,29 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 >
                   Random Sigil
                 </button>
+                {onAddThorns && (
+                  <button
+                    id="btnAddThorns"
+                    onClick={onAddThorns}
+                    title="Attach Straight Thorns fixated strictly on the path (Shortcut: T)"
+                    className="thorns-btn"
+                    style={{
+                      background: 'linear-gradient(180deg, #16364a 0%, #102533 48%, #091924 52%, #0d212d 100%)',
+                      borderTopColor: '#38bdf8',
+                      color: '#e0f2fe',
+                    }}
+                  >
+                    + Thorns
+                  </button>
+                )}
                 {onAddSpikes && (
                   <button
                     id="btnAddSpikes"
                     onClick={onAddSpikes}
-                    title="Attach Thorn Spikes to Most Recent Stroke (Shortcut: Shift+R)"
+                    title="Attach Curved Spikes to Stroke (Shortcut: Shift+R)"
+                    className="spikes-btn"
                   >
-                    Add Spikes
+                    + Spikes
                   </button>
                 )}
               </div>

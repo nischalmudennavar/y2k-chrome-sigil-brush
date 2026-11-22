@@ -93,7 +93,7 @@ export type SymmetryMode =
   | 'Radial 6'
   | 'Radial 8';
 
-export type ToolMode = 'brush' | 'eraser';
+export type ToolMode = 'brush' | 'select' | 'eraser';
 export type EraserMode = 'slice' | 'stroke';
 
 export interface ParamDef {

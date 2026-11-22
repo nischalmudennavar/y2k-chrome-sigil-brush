@@ -22,6 +22,7 @@ import { BaseStyle, export3DModel, exportImage } from './core/export';
 import { buildStrokeMesh } from './core/geometry';
 import {
   addSpikesToExistingStroke,
+  addStraightThornsToExistingStroke,
   generateRandomSigil,
   SigilStyle,
 } from './core/sigilGenerator';
@@ -50,6 +51,9 @@ export const App: React.FC = () => {
   const [toolMode, setToolMode] = useState<ToolMode>('brush');
   const [eraserSize, setEraserSize] = useState<number>(28);
   const [eraserMode, setEraserMode] = useState<EraserMode>('slice');
+  const [selectedStrokeIndex, setSelectedStrokeIndex] = useState<number | null>(null);
+  const selectedStrokeIndexRef = useRef<number | null>(null);
+  selectedStrokeIndexRef.current = selectedStrokeIndex;
 
   const [panelVisible, setPanelVisible] = useState<boolean>(true);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState<boolean>(false);
@@ -221,6 +225,22 @@ export const App: React.FC = () => {
       }
       return next;
     });
+
+    const selIdx = selectedStrokeIndexRef.current;
+    if (selIdx !== null && strokesRef.current[selIdx]) {
+      const target = strokesRef.current[selIdx];
+      target.params = { ...target.params, [key]: value };
+      if (pipelineRef.current) {
+        buildStrokeMesh(
+          pipelineRef.current,
+          target,
+          window.innerWidth,
+          window.innerHeight,
+          false
+        );
+        pipelineRef.current.dirty = true;
+      }
+    }
   };
 
   // Skeuomorphic History Sync & Scrubbing Engine
@@ -389,6 +409,7 @@ export const App: React.FC = () => {
       label: 'Clear Canvas',
     });
     redoStackRef.current = [];
+    setSelectedStrokeIndex(null);
     pipelineRef.current.dirty = true;
     syncHistoryState();
     showToast('Canvas Cleared');
@@ -513,13 +534,126 @@ export const App: React.FC = () => {
     [params, symmetry, sigilStyle, showToast, syncHistoryState]
   );
 
+  const handleSelectStroke = useCallback((index: number | null) => {
+    setSelectedStrokeIndex(index);
+    if (index !== null && strokesRef.current[index]) {
+      const sel = strokesRef.current[index];
+      setParams({ ...sel.params });
+      setSymmetry(sel.symmetry);
+      showToast(`🎯 Selected Stroke #${index + 1} (${sel.symmetry})`);
+    }
+    if (pipelineRef.current) {
+      pipelineRef.current.dirty = true;
+    }
+  }, [showToast]);
+
+  const handleDeselectStroke = useCallback(() => {
+    setSelectedStrokeIndex(null);
+    if (pipelineRef.current) {
+      pipelineRef.current.dirty = true;
+    }
+    showToast('Deselected Stroke');
+  }, [showToast]);
+
+  const handleDeleteSelectedStroke = useCallback(() => {
+    const selIdx = selectedStrokeIndexRef.current;
+    if (selIdx === null || !strokesRef.current[selIdx]) return;
+    const target = strokesRef.current[selIdx];
+
+    if (pipelineRef.current && target.group) {
+      pipelineRef.current.root.remove(target.group);
+      target.group.traverse((o: any) => {
+        if (o.geometry) o.geometry.dispose();
+      });
+    }
+
+    strokesRef.current.splice(selIdx, 1);
+    undoStackRef.current.push({
+      added: [],
+      removed: [target],
+      label: `Delete Stroke #${selIdx + 1}`,
+    });
+    redoStackRef.current = [];
+    setSelectedStrokeIndex(null);
+    syncHistoryState();
+    if (pipelineRef.current) {
+      pipelineRef.current.dirty = true;
+    }
+    showToast('🗑️ Deleted Stroke');
+  }, [syncHistoryState, showToast]);
+
+  const handleSymmetryChange = useCallback((newSymmetry: SymmetryMode) => {
+    setSymmetry(newSymmetry);
+    const selIdx = selectedStrokeIndexRef.current;
+    if (selIdx !== null && strokesRef.current[selIdx]) {
+      const target = strokesRef.current[selIdx];
+      target.symmetry = newSymmetry;
+      if (pipelineRef.current) {
+        buildStrokeMesh(
+          pipelineRef.current,
+          target,
+          window.innerWidth,
+          window.innerHeight,
+          false
+        );
+        pipelineRef.current.dirty = true;
+      }
+      showToast(`Stroke #${selIdx + 1} Symmetry: ${newSymmetry}`);
+    }
+  }, [showToast]);
+
+  const handleAddThorns = useCallback(() => {
+    if (!pipelineRef.current || strokesRef.current.length === 0) {
+      showToast('Draw a stroke first to attach straight thorns');
+      return;
+    }
+    const selIdx = selectedStrokeIndexRef.current;
+    const targetIdx = selIdx !== null && strokesRef.current[selIdx]
+      ? selIdx
+      : strokesRef.current.length - 1;
+    const target = strokesRef.current[targetIdx];
+
+    const newThorns = addStraightThornsToExistingStroke(target, 8, 1.15, 'alternating', 75);
+    if (newThorns.length === 0) {
+      showToast('Could not attach thorns to stroke');
+      return;
+    }
+
+    setIsPlaying(false);
+    newThorns.forEach((s) => {
+      buildStrokeMesh(
+        pipelineRef.current!,
+        s,
+        window.innerWidth,
+        window.innerHeight,
+        false
+      );
+    });
+
+    strokesRef.current.push(...newThorns);
+    undoStackRef.current.push({
+      added: newThorns,
+      removed: [],
+      label: `Attached Straight Thorns to Stroke #${targetIdx + 1}`,
+    });
+    redoStackRef.current = [];
+    pipelineRef.current.dirty = true;
+    syncHistoryState();
+    showToast(`🗡️ Attached Straight Thorns to Stroke #${targetIdx + 1}`);
+  }, [showToast, syncHistoryState]);
+
   const handleAddSpikes = useCallback(() => {
     if (!pipelineRef.current || strokesRef.current.length === 0) {
       showToast('Draw a stroke first to attach spikes');
       return;
     }
-    const last = strokesRef.current[strokesRef.current.length - 1];
-    const newSpikes = addSpikesToExistingStroke(last, 6, 1.15);
+    const selIdx = selectedStrokeIndexRef.current;
+    const targetIdx = selIdx !== null && strokesRef.current[selIdx]
+      ? selIdx
+      : strokesRef.current.length - 1;
+    const target = strokesRef.current[targetIdx];
+
+    const newSpikes = addSpikesToExistingStroke(target, 6, 1.15);
     if (newSpikes.length === 0) {
       showToast('Could not attach spikes to stroke');
       return;
@@ -540,12 +674,12 @@ export const App: React.FC = () => {
     undoStackRef.current.push({
       added: newSpikes,
       removed: [],
-      label: 'Attached Spikes',
+      label: `Attached Spikes to Stroke #${targetIdx + 1}`,
     });
     redoStackRef.current = [];
     pipelineRef.current.dirty = true;
     syncHistoryState();
-    showToast('⚡ Attached Spikes to Stroke');
+    showToast(`⚡ Attached Spikes to Stroke #${targetIdx + 1}`);
   }, [showToast, syncHistoryState]);
 
   // Zoom controls
@@ -864,6 +998,42 @@ export const App: React.FC = () => {
         return;
       }
 
+      // Escape: deselect stroke
+      if (e.key === 'Escape') {
+        if (selectedStrokeIndexRef.current !== null) {
+          e.preventDefault();
+          handleDeselectStroke();
+          return;
+        }
+      }
+
+      // Delete / Backspace: delete selected stroke
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedStrokeIndexRef.current !== null && (e.target as HTMLElement)?.tagName !== 'INPUT') {
+          e.preventDefault();
+          handleDeleteSelectedStroke();
+          return;
+        }
+      }
+
+      // Switch to Select tool (S)
+      if (k === 's' && !e.ctrlKey && !e.metaKey && (e.target as HTMLElement)?.tagName !== 'INPUT') {
+        e.preventDefault();
+        setToolMode((prev) => {
+          const next = prev === 'select' ? 'brush' : 'select';
+          showToast(next === 'select' ? 'Tool: Select & Modify (S)' : 'Tool: Brush (S)');
+          return next;
+        });
+        return;
+      }
+
+      // Attach Straight Thorns (Shift+T)
+      if (k === 't' && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        handleAddThorns();
+        return;
+      }
+
       // Toggle Eraser / Brush (E)
       if (k === 'e' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
@@ -1062,6 +1232,8 @@ export const App: React.FC = () => {
         toolMode={toolMode}
         eraserSize={eraserSize}
         eraserMode={eraserMode}
+        selectedStrokeIndex={selectedStrokeIndex}
+        onSelectStroke={handleSelectStroke}
         onStrokeAdded={handleStrokeAdded}
         onErasePerformed={handleErasePerformed}
       />
@@ -1080,7 +1252,7 @@ export const App: React.FC = () => {
           onResetBgColor={handleResetBgColor}
           isCustomBg={customBgColor !== null}
           symmetry={symmetry}
-          onSymmetryChange={setSymmetry}
+          onSymmetryChange={handleSymmetryChange}
           onUndo={handleUndo}
           onRedo={handleRedo}
           canRedo={canRedo}
@@ -1156,13 +1328,23 @@ export const App: React.FC = () => {
           onExport3D={handleExport3D}
           exportStatus={exportStatus}
           onGenerateSigil={handleGenerateSigil}
+          onAddThorns={handleAddThorns}
           onAddSpikes={handleAddSpikes}
           sigilStyle={sigilStyle}
           onSigilStyleChange={setSigilStyle}
+          selectedStrokeIndex={selectedStrokeIndex}
+          onDeselectStroke={handleDeselectStroke}
+          onDeleteSelectedStroke={handleDeleteSelectedStroke}
           toolMode={toolMode}
           onToolModeChange={(m) => {
             setToolMode(m);
-            showToast(m === 'eraser' ? 'Tool: Eraser (E)' : 'Tool: Brush (E)');
+            showToast(
+              m === 'select'
+                ? 'Tool: Select & Modify (S)'
+                : m === 'eraser'
+                ? 'Tool: Eraser (E)'
+                : 'Tool: Brush (B)'
+            );
           }}
           eraserSize={eraserSize}
           onEraserSizeChange={setEraserSize}

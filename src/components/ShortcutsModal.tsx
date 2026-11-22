@@ -17,11 +17,15 @@ interface ShortcutGroup {
 
 const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
-    category: 'Drawing & Brush',
+    category: 'Drawing & Stroke Selection',
     items: [
+      { keys: ['S'], desc: 'Select Tool (Click stroke to inspect & modify)' },
       { keys: ['E'], desc: 'Toggle Eraser Brush / Draw Tool' },
-      { keys: ['R'], desc: 'Generate Random Sigil with Spikes' },
-      { keys: ['Shift', 'R'], desc: 'Attach Spikes to Current Stroke' },
+      { keys: ['Shift', 'T'], desc: 'Attach Straight Thorns (fixated on path)' },
+      { keys: ['Shift', 'R'], desc: 'Attach Curved Spikes to Stroke' },
+      { keys: ['R'], desc: 'Generate Random Procedural Sigil' },
+      { keys: ['Esc'], desc: 'Deselect Active Stroke' },
+      { keys: ['Del'], desc: 'Delete Selected Stroke' },
       { keys: ['['], desc: 'Decrease Brush Width (−2px, Shift for −10)' },
       { keys: [']'], desc: 'Increase Brush Width (+2px, Shift for +10)' },
       { keys: ['X'], desc: 'Cycle Symmetry (None, Mirror, Radial)' },

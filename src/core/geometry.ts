@@ -374,3 +374,82 @@ export function getStrokesBounds(strokes: Stroke[], defaultW = 1000, defaultH = 
     cy: (minY + maxY) / 2,
   };
 }
+
+/**
+ * Distance from point P to line segment AB
+ */
+function distToSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const lenSq = abx * abx + aby * aby;
+  if (lenSq < 1e-6) {
+    return Math.hypot(px - ax, py - ay);
+  }
+  const t = Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / lenSq));
+  const qx = ax + t * abx;
+  const qy = ay + t * aby;
+  return Math.hypot(px - qx, py - qy);
+}
+
+/**
+ * Finds the index of the closest stroke to a given canvas coordinate (px, py),
+ * taking into account stroke thickness and all symmetry reflections.
+ */
+export function findClosestStroke(
+  strokes: Stroke[],
+  px: number,
+  py: number,
+  defaultW: number = 1000,
+  defaultH: number = 1000,
+  extraTolerance: number = 16
+): { index: number; distance: number } | null {
+  if (strokes.length === 0) return null;
+
+  let bestIndex = -1;
+  let minDistance = Infinity;
+
+  // Search in reverse order so topmost (most recently drawn) stroke is preferred
+  for (let sIdx = strokes.length - 1; sIdx >= 0; sIdx--) {
+    const s = strokes[sIdx];
+    const pts = s.pts && s.pts.length > 0 ? s.pts : s.raw || [];
+    if (pts.length === 0) continue;
+
+    const sym = s.symmetry || 'None';
+    const transforms = getSymmetryTransforms(sym, defaultW, defaultH);
+    const strokeWidth = s.params?.width || 20;
+    const threshold = Math.max(extraTolerance, strokeWidth / 2 + extraTolerance);
+
+    let strokeMinDist = Infinity;
+
+    for (const T of transforms) {
+      if (pts.length === 1) {
+        const [tx, ty] = T.f(pts[0].x, pts[0].y);
+        const d = Math.hypot(px - tx, py - ty);
+        if (d < strokeMinDist) strokeMinDist = d;
+      } else {
+        for (let i = 0; i < pts.length - 1; i++) {
+          const [ax, ay] = T.f(pts[i].x, pts[i].y);
+          const [bx, by] = T.f(pts[i + 1].x, pts[i + 1].y);
+          const d = distToSegment(px, py, ax, ay, bx, by);
+          if (d < strokeMinDist) {
+            strokeMinDist = d;
+          }
+        }
+      }
+    }
+
+    if (strokeMinDist <= threshold && strokeMinDist < minDistance) {
+      minDistance = strokeMinDist;
+      bestIndex = sIdx;
+    }
+  }
+
+  return bestIndex !== -1 ? { index: bestIndex, distance: minDistance } : null;
+}

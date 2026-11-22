@@ -1174,6 +1174,128 @@ button.is-active {
   text-shadow: 0 0 6px var(--accent-glow);
 }
 
+/* Selected Stroke Active Inspector Banner */
+.selected-stroke-deck {
+  background: linear-gradient(180deg, #101c2a 0%, #0a131e 100%);
+  border: 1px solid #1e3a54;
+  border-top: 1px solid #38bdf8;
+  border-radius: 8px;
+  padding: 10px 10px;
+  margin-bottom: 14px;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(56, 189, 248, 0.25);
+  animation: strokeDeckPulse 3s ease infinite alternate;
+}
+
+@keyframes strokeDeckPulse {
+  0% {
+    border-color: #1e3a54;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(56, 189, 248, 0.2);
+  }
+  100% {
+    border-color: #2b5579;
+    box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25), inset 0 1px 0 rgba(56, 189, 248, 0.45);
+  }
+}
+
+.selected-stroke-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.selected-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Michroma', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+  animation: pulseDot 1s infinite alternate ease-in-out;
+}
+
+@keyframes pulseDot {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.3);
+    opacity: 1;
+    box-shadow: 0 0 12px #38bdf8;
+  }
+}
+
+.selected-btn-group {
+  display: flex;
+  gap: 6px;
+}
+
+.sel-action-btn {
+  padding: 3px 8px;
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sel-delete-btn {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+  color: #fca5a5;
+}
+
+.sel-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.35);
+  color: #ffffff;
+}
+
+.sel-done-btn {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid #38bdf8;
+  color: #bae6fd;
+}
+
+.sel-done-btn:hover {
+  background: rgba(56, 189, 248, 0.35);
+  color: #ffffff;
+}
+
+.selected-stroke-desc {
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #94a3b8;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* SVG Highlight Animated Glow */
+@keyframes cyberDashOffset {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.selected-stroke-glow {
+  animation: cyberDashOffset 1.4s linear infinite;
+  filter: drop-shadow(0 0 6px #00f0ff);
+}
+
 /* Section Titles (Export & Brush) */
 .export-section-title,
 .panel-section-title {

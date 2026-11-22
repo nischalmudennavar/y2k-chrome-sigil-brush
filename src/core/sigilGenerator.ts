@@ -79,6 +79,126 @@ function sampleBezierPath(
   return pts;
 }
 
+export interface ThornOptions {
+  count?: number;
+  baseLength?: number;
+  lengthMultiplier?: number;
+  brushParams?: BrushParams;
+  symmetry?: SymmetryMode;
+  side?: 'alternating' | 'both' | 'left' | 'right';
+  angleDeg?: number; // Swept angle relative to forward tangent (default 75 deg)
+}
+
+/**
+ * Creates straight, needle-sharp metallic thorns anchored directly to points along a given path.
+ * Every thorn begins exactly at a point on the parent stroke and shoots in a straight linear ray,
+ * completely fixated on the local normal/tangent of the stroke path without external center bias or curve drift.
+ */
+export function generateStraightThornsForPath(
+  parentPts: Point[],
+  options: ThornOptions = {}
+): Stroke[] {
+  if (parentPts.length < 3) return [];
+
+  const {
+    count = 8,
+    baseLength = 48,
+    lengthMultiplier = 1.0,
+    brushParams = DEFAULT_PARAMS,
+    symmetry = 'None',
+    side = 'alternating',
+    angleDeg = 75,
+  } = options;
+
+  // Resample parent path for uniform spacing
+  const smoothed = smooth(parentPts, 2);
+  const uniformPts = resample(smoothed, 3.0);
+  const n = uniformPts.length;
+  if (n < 4) return [];
+
+  const thorns: Stroke[] = [];
+  const startIdx = Math.floor(n * 0.08);
+  const endIdx = Math.floor(n * 0.92);
+  const usableLen = endIdx - startIdx;
+  if (usableLen < 2) return [];
+
+  const actualCount = Math.min(count, Math.max(2, Math.floor(usableLen / 2)));
+  const step = usableLen / (actualCount + 1);
+
+  for (let k = 0; k < actualCount; k++) {
+    const idx = Math.round(startIdx + (k + 1) * step);
+    const safeIdx = Math.max(1, Math.min(n - 2, idx));
+
+    const base = uniformPts[safeIdx];
+    const prev = uniformPts[safeIdx - 1];
+    const next = uniformPts[safeIdx + 1];
+
+    // Compute exact local tangent along the stroke path
+    const tx = next.x - prev.x;
+    const ty = next.y - prev.y;
+    const tLen = Math.hypot(tx, ty) || 1;
+    const normTx = tx / tLen;
+    const normTy = ty / tLen;
+
+    // Local perpendicular normal (-ty, tx)
+    const normNx = -normTy;
+    const normNy = normTx;
+
+    // Side selection: alternating strictly along the path, bilateral (both), left or right
+    const sides: number[] = [];
+    if (side === 'both') {
+      sides.push(1, -1);
+    } else if (side === 'left') {
+      sides.push(1);
+    } else if (side === 'right') {
+      sides.push(-1);
+    } else {
+      // Alternating along the spine
+      sides.push(k % 2 === 0 ? 1 : -1);
+    }
+
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const sinA = Math.sin(angleRad);
+    const cosA = Math.cos(angleRad);
+    const thornLen = baseLength * lengthMultiplier;
+
+    for (const s of sides) {
+      // Direction vector fixated on the stroke's local frame:
+      // normal scaled by side + forward tangent projection for aerodynamic swept thorn
+      const dirX = s * normNx * sinA + normTx * cosA;
+      const dirY = s * normNy * sinA + normTy * cosA;
+      const dLen = Math.hypot(dirX, dirY) || 1;
+      const uDirX = dirX / dLen;
+      const uDirY = dirY / dLen;
+
+      // Pure straight ray from the exact stroke path point (base)
+      const steps = 6;
+      const thornPts: Point[] = [];
+      for (let stepIdx = 0; stepIdx <= steps; stepIdx++) {
+        const u = stepIdx / steps;
+        thornPts.push({
+          x: base.x + uDirX * (thornLen * u),
+          y: base.y + uDirY * (thornLen * u),
+          p: Math.max(0.04, Math.pow(1 - u, 0.85)),
+        });
+      }
+
+      thorns.push({
+        raw: thornPts,
+        group: null,
+        params: {
+          ...brushParams,
+          width: Math.max(4, (brushParams.width || 20) * 0.72),
+          taper: 0.95,
+        },
+        symmetry,
+      });
+    }
+  }
+
+  return thorns;
+}
+
 /**
  * Creates curved thorn/spike strokes branching out from points along a given path
  */
@@ -459,7 +579,7 @@ export function generateRandomSigil(options: SigilGeneratorOptions = {}): Stroke
 }
 
 /**
- * Attaches spikes along any pre-existing user-drawn stroke!
+ * Attaches curved spikes along any pre-existing user-drawn stroke!
  */
 export function addSpikesToExistingStroke(
   parentStroke: Stroke,
@@ -481,5 +601,29 @@ export function addSpikesToExistingStroke(
     center: actualCenter,
     brushParams: parentStroke.params,
     symmetry: parentStroke.symmetry,
+  });
+}
+
+/**
+ * Attaches straight thorns fixated strictly on the path of any pre-existing stroke!
+ */
+export function addStraightThornsToExistingStroke(
+  parentStroke: Stroke,
+  count: number = 8,
+  lengthMultiplier: number = 1.0,
+  side: 'alternating' | 'both' | 'left' | 'right' = 'alternating',
+  angleDeg: number = 75
+): Stroke[] {
+  const pts = parentStroke.pts && parentStroke.pts.length > 0 ? parentStroke.pts : parentStroke.raw;
+  if (!pts || pts.length < 3) return [];
+
+  return generateStraightThornsForPath(pts, {
+    count,
+    baseLength: Math.max(32, (parentStroke.params.width || 20) * 2.2),
+    lengthMultiplier,
+    brushParams: parentStroke.params,
+    symmetry: parentStroke.symmetry,
+    side,
+    angleDeg,
   });
 }

@@ -14,6 +14,7 @@ import { eraseAtSegment } from '../core/eraser';
 import {
   buildStrokeMesh,
   buildStrokeParts,
+  findClosestStroke,
   getSymmetryTransforms,
   pressureFactor,
   resample,
@@ -38,6 +39,8 @@ interface CanvasStageProps {
   toolMode?: ToolMode;
   eraserSize?: number;
   eraserMode?: EraserMode;
+  selectedStrokeIndex?: number | null;
+  onSelectStroke?: (index: number | null) => void;
   onStrokeAdded?: (stroke: Stroke) => void;
   onErasePerformed?: (removed: Stroke[], added: Stroke[]) => void;
 }
@@ -60,6 +63,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   toolMode = 'brush',
   eraserSize = 28,
   eraserMode = 'slice',
+  selectedStrokeIndex = null,
+  onSelectStroke,
   onStrokeAdded,
   onErasePerformed,
 }) => {
@@ -104,6 +109,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     visible: false,
   });
 
+  const selectedStrokeIndexRef = useRef<number | null>(selectedStrokeIndex);
+  selectedStrokeIndexRef.current = selectedStrokeIndex;
+
+  const onSelectStrokeRef = useRef(onSelectStroke);
+  onSelectStrokeRef.current = onSelectStroke;
+
   const orbRef = useRef({ y: 0, p: 0, z: 1 });
   const ptrRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const timeRef = useRef(0);
@@ -135,7 +146,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     );
   };
 
-  // Update guide SVG overlay
+  // Update guide SVG overlay with symmetry lines and selected stroke highlight
   const drawGuide = () => {
     const el = guideRef.current;
     if (!el) return;
@@ -155,6 +166,70 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         s += L(w / 2, h / 2, w / 2 + Math.cos(a) * 90, h / 2 + Math.sin(a) * 90);
       }
     }
+
+    // Selected Stroke Cyber Highlight
+    let selectionMarkup = '';
+    const selIdx = selectedStrokeIndexRef.current;
+    if (selIdx !== null && selIdx !== undefined && !mode3dRef.current && strokesRef.current) {
+      const selStroke = strokesRef.current[selIdx];
+      if (selStroke) {
+        const pts = selStroke.pts && selStroke.pts.length > 0 ? selStroke.pts : selStroke.raw || [];
+        if (pts.length > 0) {
+          const sym = selStroke.symmetry || 'None';
+          const transforms = getSymmetryTransforms(sym, w, h);
+          const baseW = Math.max(6, (selStroke.params?.width || 20));
+
+          let branchPaths = '';
+          let anchorCircles = '';
+          let badgeX = 0;
+          let badgeY = 0;
+          let hasBadge = false;
+
+          transforms.forEach((T, tIdx) => {
+            const transformed = pts.map((p) => T.f(p.x, p.y));
+            if (transformed.length === 1) {
+              const [x, y] = transformed[0];
+              anchorCircles += `<circle cx='${x.toFixed(1)}' cy='${y.toFixed(1)}' r='${(baseW / 2 + 4).toFixed(1)}' fill='none' stroke='#00f0ff' stroke-width='2.5' stroke-dasharray='4 3'/>`;
+            } else {
+              let d = `M ${transformed[0][0].toFixed(1)} ${transformed[0][1].toFixed(1)}`;
+              for (let i = 1; i < transformed.length; i++) {
+                d += ` L ${transformed[i][0].toFixed(1)} ${transformed[i][1].toFixed(1)}`;
+              }
+              // Outer wide glow aura
+              branchPaths += `<path d='${d}' fill='none' stroke='#00f0ff' stroke-width='${(baseW + 14).toFixed(1)}' stroke-linecap='round' stroke-linejoin='round' opacity='0.25'/>`;
+              // Inner sharp neon dashed pulse line
+              branchPaths += `<path d='${d}' fill='none' stroke='#38bdf8' stroke-width='3.5' stroke-dasharray='8 4' stroke-linecap='round' stroke-linejoin='round' class='selected-stroke-glow' opacity='0.95'/>`;
+
+              // Start, midpoint, and tip reticles
+              const pStart = transformed[0];
+              const pEnd = transformed[transformed.length - 1];
+              anchorCircles += `<circle cx='${pStart[0].toFixed(1)}' cy='${pStart[1].toFixed(1)}' r='4.5' fill='#38bdf8' stroke='#ffffff' stroke-width='1.5'/>`;
+              anchorCircles += `<circle cx='${pEnd[0].toFixed(1)}' cy='${pEnd[1].toFixed(1)}' r='4.5' fill='#00f0ff' stroke='#ffffff' stroke-width='1.5'/>`;
+
+              if (tIdx === 0) {
+                const mid = transformed[Math.floor(transformed.length / 2)];
+                badgeX = mid[0];
+                badgeY = mid[1] - (baseW / 2 + 22);
+                hasBadge = true;
+              }
+            }
+          });
+
+          let badgeMarkup = '';
+          if (hasBadge) {
+            badgeMarkup = `
+              <g transform='translate(${badgeX.toFixed(1)}, ${badgeY.toFixed(1)})'>
+                <rect x='-50' y='-13' width='100' height='24' rx='5' fill='rgba(7, 16, 30, 0.94)' stroke='#00f0ff' stroke-width='1.5' filter='drop-shadow(0 2px 8px rgba(0,0,0,0.85))'/>
+                <text x='0' y='3.5' fill='#e0f2fe' font-family='Michroma, sans-serif' font-size='9' font-weight='700' text-anchor='middle' letter-spacing='0.6'>STROKE #${selIdx + 1}</text>
+              </g>
+            `;
+          }
+
+          selectionMarkup = `<g class='selected-stroke-highlight'>${branchPaths}${anchorCircles}${badgeMarkup}</g>`;
+        }
+      }
+    }
+
     const currentView = viewRef.current;
     let eraserCircle = '';
     if (toolModeRef.current === 'eraser' && eraserCursorRef.current.visible && !mode3dRef.current) {
@@ -162,7 +237,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       const r = eraserSizeRef.current / 2;
       eraserCircle = `<circle cx='${ec.x}' cy='${ec.y}' r='${r}' fill='rgba(255, 75, 110, 0.22)' stroke='#ff4d79' stroke-width='1.5' stroke-dasharray='3 3'/>`;
     }
-    el.innerHTML = `<g transform="translate(${currentView.x}, ${currentView.y}) scale(${currentView.scale})"><g stroke='${guideColor}' stroke-dasharray='4 6'>${s}</g>${eraserCircle}</g>`;
+    el.innerHTML = `<g transform="translate(${currentView.x}, ${currentView.y}) scale(${currentView.scale})"><g stroke='${guideColor}' stroke-dasharray='4 6'>${s}</g>${selectionMarkup}${eraserCircle}</g>`;
     el.style.display = mode3dRef.current ? 'none' : '';
   };
 
@@ -183,7 +258,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   useEffect(() => {
     drawGuide();
     updateRefTransform();
-  }, [view, symmetry, guideColor, refState, mode3d, toolMode, eraserSize]);
+  }, [view, symmetry, guideColor, refState, mode3d, toolMode, eraserSize, selectedStrokeIndex, params]);
 
   // Main canvas interaction & animation loop
   useEffect(() => {
@@ -203,6 +278,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     let isPanning = false;
     let panStart = { x: 0, y: 0 };
     let isSpaceDown = false;
+    let pointerMovedDist = 0;
 
     const setInteractiveMode = (_active: boolean) => {
       // Dynamic quality is handled on each animation frame via isInteracting without GPU texture churn
@@ -257,6 +333,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       setInteractiveMode(true);
       canvas.setPointerCapture(e.pointerId);
       activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      pointerMovedDist = 0;
 
       // 2-finger pinch
       if (activePointers.size === 2 && !mode3dRef.current) {
@@ -284,6 +361,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
       if (mode3dRef.current) {
         orbDrag = { x: e.clientX, y: e.clientY };
+        return;
+      }
+
+      // Select tool mode: skip brush stroke creation
+      if (toolModeRef.current === 'select') {
         return;
       }
 
@@ -367,6 +449,23 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         return;
       }
 
+      pointerMovedDist += Math.hypot(e.movementX || 0, e.movementY || 0);
+
+      // Select mode hovering feedback
+      if (toolModeRef.current === 'select' && !isPanning && !mode3dRef.current) {
+        const p = getCanvasPos(e.clientX, e.clientY);
+        const hit = findClosestStroke(
+          strokesRef.current,
+          p.x,
+          p.y,
+          window.innerWidth,
+          window.innerHeight,
+          20 / viewRef.current.scale
+        );
+        canvas.style.cursor = hit ? 'pointer' : 'default';
+        return;
+      }
+
       // Update eraser cursor tracking
       const curCanvasPos = getCanvasPos(e.clientX, e.clientY);
       eraserCursorRef.current = { x: curCanvasPos.x, y: curCanvasPos.y, visible: true };
@@ -441,10 +540,48 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         setInteractiveMode(false);
         return;
       }
+      if (toolModeRef.current === 'select') {
+        if (pointerMovedDist < 12) {
+          const p = getCanvasPos(e.clientX, e.clientY);
+          const hit = findClosestStroke(
+            strokesRef.current,
+            p.x,
+            p.y,
+            window.innerWidth,
+            window.innerHeight,
+            24 / viewRef.current.scale
+          );
+          if (hit) {
+            onSelectStrokeRef.current?.(hit.index);
+          } else {
+            onSelectStrokeRef.current?.(null);
+          }
+        }
+        pipeline.dirty = true;
+        setInteractiveMode(false);
+        return;
+      }
       if (cur) {
         if (cur.raw.length < 2) {
           strokesRef.current.pop();
           dropStroke(cur);
+          // Tap click in brush mode: hit test to select an existing stroke or deselect
+          if (pointerMovedDist < 8) {
+            const p = getCanvasPos(e.clientX, e.clientY);
+            const hit = findClosestStroke(
+              strokesRef.current,
+              p.x,
+              p.y,
+              window.innerWidth,
+              window.innerHeight,
+              20 / viewRef.current.scale
+            );
+            if (hit) {
+              onSelectStrokeRef.current?.(hit.index);
+            } else if (selectedStrokeIndexRef.current !== null) {
+              onSelectStrokeRef.current?.(null);
+            }
+          }
         } else {
           rebuildStroke(cur, false);
           onStrokeAdded?.(cur);
@@ -627,7 +764,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         <canvas
           ref={canvasRef}
           style={{
-            cursor: panMode ? 'grab' : mode3d ? 'grab' : 'crosshair',
+            cursor: panMode ? 'grab' : mode3d ? 'grab' : toolMode === 'select' ? 'default' : 'crosshair',
           }}
         />
       </div>
