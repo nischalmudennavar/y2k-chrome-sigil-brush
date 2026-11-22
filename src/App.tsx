@@ -582,6 +582,20 @@ export const App: React.FC = () => {
     showToast('🗑️ Deleted Stroke');
   }, [syncHistoryState, showToast]);
 
+  const handleStrokeTransformed = useCallback(
+    (_strokeIndex: number, oldStroke: Stroke, newStroke: Stroke) => {
+      undoStackRef.current.push({
+        added: [newStroke],
+        removed: [oldStroke],
+        label: 'Transform Endpoints',
+      });
+      redoStackRef.current = [];
+      syncHistoryState();
+      showToast('⚡ Transformed Stroke Endpoints');
+    },
+    [syncHistoryState, showToast]
+  );
+
   const handleSymmetryChange = useCallback((newSymmetry: SymmetryMode) => {
     setSymmetry(newSymmetry);
     const selIdx = selectedStrokeIndexRef.current;
@@ -1235,6 +1249,7 @@ export const App: React.FC = () => {
         selectedStrokeIndex={selectedStrokeIndex}
         onSelectStroke={handleSelectStroke}
         onStrokeAdded={handleStrokeAdded}
+        onStrokeTransformed={handleStrokeTransformed}
         onErasePerformed={handleErasePerformed}
       />
 

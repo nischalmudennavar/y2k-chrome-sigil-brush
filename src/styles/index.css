@@ -1296,6 +1296,35 @@ button.is-active {
   filter: drop-shadow(0 0 6px #00f0ff);
 }
 
+/* Interactive Transform Handles for Endpoints */
+.stroke-endpoint-handle {
+  cursor: crosshair;
+}
+
+.stroke-endpoint-handle circle {
+  transition: r 0.15s ease, stroke-width 0.15s ease;
+}
+
+.stroke-endpoint-handle:hover circle:first-child {
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+@keyframes handlePulseRing {
+  0% {
+    r: 10;
+    opacity: 0.9;
+  }
+  100% {
+    r: 16;
+    opacity: 0.2;
+  }
+}
+
+.handle-outer-ring {
+  animation: handlePulseRing 2s infinite ease-out;
+}
+
 /* Section Titles (Export & Brush) */
 .export-section-title,
 .panel-section-title {

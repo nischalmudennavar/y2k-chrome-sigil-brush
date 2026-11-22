@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import {
   BrushParams,
   EraserMode,
+  Point,
   RefImageState,
   Stroke,
   SymmetryMode,
@@ -42,6 +43,7 @@ interface CanvasStageProps {
   selectedStrokeIndex?: number | null;
   onSelectStroke?: (index: number | null) => void;
   onStrokeAdded?: (stroke: Stroke) => void;
+  onStrokeTransformed?: (strokeIndex: number, oldStroke: Stroke, newStroke: Stroke) => void;
   onErasePerformed?: (removed: Stroke[], added: Stroke[]) => void;
 }
 
@@ -66,6 +68,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   selectedStrokeIndex = null,
   onSelectStroke,
   onStrokeAdded,
+  onStrokeTransformed,
   onErasePerformed,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -114,6 +117,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   const onSelectStrokeRef = useRef(onSelectStroke);
   onSelectStrokeRef.current = onSelectStroke;
+
+  const onStrokeTransformedRef = useRef(onStrokeTransformed);
+  onStrokeTransformedRef.current = onStrokeTransformed;
 
   const orbRef = useRef({ y: 0, p: 0, z: 1 });
   const ptrRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
@@ -203,14 +209,36 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               // Start, midpoint, and tip reticles
               const pStart = transformed[0];
               const pEnd = transformed[transformed.length - 1];
-              anchorCircles += `<circle cx='${pStart[0].toFixed(1)}' cy='${pStart[1].toFixed(1)}' r='4.5' fill='#38bdf8' stroke='#ffffff' stroke-width='1.5'/>`;
-              anchorCircles += `<circle cx='${pEnd[0].toFixed(1)}' cy='${pEnd[1].toFixed(1)}' r='4.5' fill='#00f0ff' stroke='#ffffff' stroke-width='1.5'/>`;
 
               if (tIdx === 0) {
+                // Interactive Transform Handles for Start & End Points
+                anchorCircles += `
+                  <g class='stroke-endpoint-handle handle-start' transform='translate(${pStart[0].toFixed(1)}, ${pStart[1].toFixed(1)})'>
+                    <circle r='13' fill='rgba(56, 189, 248, 0.22)' stroke='#38bdf8' stroke-width='1.5' stroke-dasharray='3 2' class='handle-outer-ring'/>
+                    <circle r='5' fill='#38bdf8' stroke='#ffffff' stroke-width='1.5'/>
+                    <g transform='translate(0, -18)'>
+                      <rect x='-24' y='-8' width='48' height='16' rx='3' fill='rgba(15, 23, 42, 0.94)' stroke='#38bdf8' stroke-width='1' filter='drop-shadow(0 2px 4px rgba(0,0,0,0.8))'/>
+                      <text x='0' y='3.5' fill='#e0f2fe' font-family='Michroma, sans-serif' font-size='7.5' font-weight='700' text-anchor='middle'>START</text>
+                    </g>
+                  </g>
+                  <g class='stroke-endpoint-handle handle-end' transform='translate(${pEnd[0].toFixed(1)}, ${pEnd[1].toFixed(1)})'>
+                    <circle r='13' fill='rgba(244, 63, 94, 0.22)' stroke='#f43f5e' stroke-width='1.5' stroke-dasharray='3 2' class='handle-outer-ring'/>
+                    <circle r='5' fill='#f43f5e' stroke='#ffffff' stroke-width='1.5'/>
+                    <g transform='translate(0, -18)'>
+                      <rect x='-20' y='-8' width='40' height='16' rx='3' fill='rgba(15, 23, 42, 0.94)' stroke='#f43f5e' stroke-width='1' filter='drop-shadow(0 2px 4px rgba(0,0,0,0.8))'/>
+                      <text x='0' y='3.5' fill='#ffe4e6' font-family='Michroma, sans-serif' font-size='7.5' font-weight='700' text-anchor='middle'>END</text>
+                    </g>
+                  </g>
+                `;
+
                 const mid = transformed[Math.floor(transformed.length / 2)];
                 badgeX = mid[0];
                 badgeY = mid[1] - (baseW / 2 + 22);
                 hasBadge = true;
+              } else {
+                // Symmetric branch reticles
+                anchorCircles += `<circle cx='${pStart[0].toFixed(1)}' cy='${pStart[1].toFixed(1)}' r='4' fill='#38bdf8' stroke='#ffffff' stroke-width='1.5' opacity='0.75'/>`;
+                anchorCircles += `<circle cx='${pEnd[0].toFixed(1)}' cy='${pEnd[1].toFixed(1)}' r='4' fill='#f43f5e' stroke='#ffffff' stroke-width='1.5' opacity='0.75'/>`;
               }
             }
           });
@@ -278,7 +306,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     let isPanning = false;
     let panStart = { x: 0, y: 0 };
     let isSpaceDown = false;
+    let pointerDownPos = { x: 0, y: 0 };
     let pointerMovedDist = 0;
+    let endpointDrag: {
+      type: 'start' | 'end' | 'move';
+      strokeIndex: number;
+      origRaw: Point[];
+      cumDistances: number[];
+      totalLen: number;
+      startCanvasPos: { x: number; y: number };
+      initialSnapshot: Stroke;
+    } | null = null;
 
     const setInteractiveMode = (_active: boolean) => {
       // Dynamic quality is handled on each animation frame via isInteracting without GPU texture churn
@@ -333,6 +371,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       setInteractiveMode(true);
       canvas.setPointerCapture(e.pointerId);
       activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      pointerDownPos = { x: e.clientX, y: e.clientY };
       pointerMovedDist = 0;
 
       // 2-finger pinch
@@ -364,8 +403,81 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         return;
       }
 
-      // Select tool mode: skip brush stroke creation
+      // Check if clicking on start or end handle of the selected stroke
+      const selIdx = selectedStrokeIndexRef.current;
+      if (selIdx !== null && selIdx !== undefined && !mode3dRef.current && strokesRef.current[selIdx]) {
+        const targetStroke = strokesRef.current[selIdx];
+        const raw = targetStroke.raw;
+        if (raw && raw.length >= 2) {
+          const clickPos = getCanvasPos(e.clientX, e.clientY);
+          const pStart = raw[0];
+          const pEnd = raw[raw.length - 1];
+          const handleGrabRadius = 26 / viewRef.current.scale;
+          const dStart = Math.hypot(clickPos.x - pStart.x, clickPos.y - pStart.y);
+          const dEnd = Math.hypot(clickPos.x - pEnd.x, clickPos.y - pEnd.y);
+
+          if (dStart <= handleGrabRadius || dEnd <= handleGrabRadius) {
+            const dragType: 'start' | 'end' = dStart <= dEnd ? 'start' : 'end';
+            const cumDistances = [0];
+            for (let i = 1; i < raw.length; i++) {
+              cumDistances.push(cumDistances[i - 1] + Math.hypot(raw[i].x - raw[i - 1].x, raw[i].y - raw[i - 1].y));
+            }
+            const totalLen = cumDistances[cumDistances.length - 1] || 1;
+            const origRaw = raw.map((p) => ({ ...p }));
+            const initialSnapshot: Stroke = {
+              ...targetStroke,
+              raw: origRaw,
+              params: { ...targetStroke.params },
+            };
+
+            endpointDrag = {
+              type: dragType,
+              strokeIndex: selIdx,
+              origRaw,
+              cumDistances,
+              totalLen,
+              startCanvasPos: clickPos,
+              initialSnapshot,
+            };
+            canvas.style.cursor = 'crosshair';
+            return;
+          }
+        }
+      }
+
+      // In select mode: check if clicking on the selected stroke body to translate it
       if (toolModeRef.current === 'select') {
+        if (selIdx !== null && selIdx !== undefined && strokesRef.current[selIdx]) {
+          const clickPos = getCanvasPos(e.clientX, e.clientY);
+          const hit = findClosestStroke(
+            [strokesRef.current[selIdx]],
+            clickPos.x,
+            clickPos.y,
+            window.innerWidth,
+            window.innerHeight,
+            24 / viewRef.current.scale
+          );
+          if (hit) {
+            const targetStroke = strokesRef.current[selIdx];
+            const origRaw = targetStroke.raw.map((p) => ({ ...p }));
+            const initialSnapshot: Stroke = {
+              ...targetStroke,
+              raw: origRaw,
+              params: { ...targetStroke.params },
+            };
+            endpointDrag = {
+              type: 'move',
+              strokeIndex: selIdx,
+              origRaw,
+              cumDistances: [],
+              totalLen: 1,
+              startCanvasPos: clickPos,
+              initialSnapshot,
+            };
+            canvas.style.cursor = 'move';
+            return;
+          }
+        }
         return;
       }
 
@@ -449,7 +561,50 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         return;
       }
 
-      pointerMovedDist += Math.hypot(e.movementX || 0, e.movementY || 0);
+      // Handle endpoint / stroke transform drag
+      if (endpointDrag !== null) {
+        const curPos = getCanvasPos(e.clientX, e.clientY);
+        const dx = curPos.x - endpointDrag.startCanvasPos.x;
+        const dy = curPos.y - endpointDrag.startCanvasPos.y;
+        const targetStroke = strokesRef.current[endpointDrag.strokeIndex];
+        if (targetStroke) {
+          const { type, origRaw, cumDistances, totalLen } = endpointDrag;
+          for (let i = 0; i < targetStroke.raw.length; i++) {
+            if (type === 'move') {
+              targetStroke.raw[i].x = origRaw[i].x + dx;
+              targetStroke.raw[i].y = origRaw[i].y + dy;
+            } else {
+              const u = totalLen > 0 ? cumDistances[i] / totalLen : i / (targetStroke.raw.length - 1 || 1);
+              const factor = type === 'start' ? (1 - u) : u;
+              targetStroke.raw[i].x = origRaw[i].x + dx * factor;
+              targetStroke.raw[i].y = origRaw[i].y + dy * factor;
+            }
+          }
+          rebuildStroke(targetStroke, true);
+          pipeline.dirty = true;
+          drawGuide();
+        }
+        return;
+      }
+
+      pointerMovedDist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+
+      // Handle hover cursor over endpoint handles of the selected stroke
+      const selIdx = selectedStrokeIndexRef.current;
+      if (selIdx !== null && selIdx !== undefined && !isPanning && !mode3dRef.current && strokesRef.current[selIdx]) {
+        const targetStroke = strokesRef.current[selIdx];
+        const raw = targetStroke.raw;
+        if (raw && raw.length >= 2) {
+          const curPos = getCanvasPos(e.clientX, e.clientY);
+          const handleGrabRadius = 26 / viewRef.current.scale;
+          const dStart = Math.hypot(curPos.x - raw[0].x, curPos.y - raw[0].y);
+          const dEnd = Math.hypot(curPos.x - raw[raw.length - 1].x, curPos.y - raw[raw.length - 1].y);
+          if (dStart <= handleGrabRadius || dEnd <= handleGrabRadius) {
+            canvas.style.cursor = 'crosshair';
+            return;
+          }
+        }
+      }
 
       // Select mode hovering feedback
       if (toolModeRef.current === 'select' && !isPanning && !mode3dRef.current) {
@@ -525,6 +680,22 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       if (orbDrag) {
         orbDrag = null;
         pipeline.dirty = true;
+        setInteractiveMode(false);
+        return;
+      }
+      if (endpointDrag !== null) {
+        const targetStroke = strokesRef.current[endpointDrag.strokeIndex];
+        if (targetStroke) {
+          rebuildStroke(targetStroke, false);
+          onStrokeTransformedRef.current?.(
+            endpointDrag.strokeIndex,
+            endpointDrag.initialSnapshot,
+            { ...targetStroke, raw: targetStroke.raw.map((p) => ({ ...p })) }
+          );
+        }
+        endpointDrag = null;
+        pipeline.dirty = true;
+        drawGuide();
         setInteractiveMode(false);
         return;
       }
