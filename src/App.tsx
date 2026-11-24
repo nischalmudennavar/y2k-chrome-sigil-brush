@@ -10,6 +10,7 @@ import { NoiseOverlay } from './components/NoiseOverlay';
 import { ShortcutsModal } from './components/ShortcutsModal';
 import { DocsModal } from './components/DocsModal';
 import { ToastStack } from './components/ToastStack';
+import { UIMetaballLayer } from './components/UIMetaballLayer';
 import { BaseStyle, export3DModel, exportImage } from './core/export';
 import { buildStrokeMesh } from './core/geometry';
 import { useThemeVibe } from './hooks/useThemeVibe';
@@ -456,6 +457,8 @@ export const App: React.FC = () => {
       />
 
       {noiseEnabled && <NoiseOverlay intensity={params.noise} />}
+
+      <UIMetaballLayer />
 
       {panelVisible ? (
         <ControlPanel

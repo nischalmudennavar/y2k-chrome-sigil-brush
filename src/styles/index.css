@@ -3789,3 +3789,30 @@ button.is-active {
 .resize-handle-corner:hover {
   background: var(--accent-ambient, rgba(127, 182, 255, 0.28));
 }
+
+/* Y2K Fluid Metaball Merge Layer */
+.ui-metaball-layer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 24;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+  filter: drop-shadow(0 0 18px var(--accent-ambient));
+}
+
+.ui-metaball-specular {
+  fill: var(--accent-glow, rgba(127, 182, 255, 0.35));
+  opacity: 0.22;
+  filter: blur(8px);
+}
+
+.global-tools-dock.is-metaball-merged {
+  border-color: var(--accent);
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.45),
+    0 0 24px var(--accent-ambient),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
