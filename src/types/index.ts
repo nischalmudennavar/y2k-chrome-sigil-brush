@@ -1,3 +1,5 @@
+import type * as THREE from 'three';
+
 export interface BrushParams {
   width: number;
   taper: number;
@@ -53,7 +55,7 @@ export interface Point {
 export interface Stroke {
   raw: Point[];
   pts?: Point[];
-  group: any;
+  group: THREE.Group | null;
   params: BrushParams;
   symmetry: SymmetryMode;
 }

@@ -42,8 +42,6 @@ export class RenderPipeline {
   private fs = 0.5;
   dirty = true;
   private currentPr: number = 1;
-  private width: number = 0;
-  private height: number = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.currentPr = Math.min(window.devicePixelRatio || 1, 2);
@@ -173,8 +171,6 @@ export class RenderPipeline {
   }
 
   resize(w: number, h: number, customPr?: number) {
-    this.width = w;
-    this.height = h;
     const pr = customPr ?? this.currentPr;
     this.currentPr = pr;
     this.renderer.setPixelRatio(pr);
@@ -282,14 +278,18 @@ export class RenderPipeline {
     this.pass(this.cmbMat, this.cmbRT);
   }
 
-  applyTheme(vibe: VibePreset) {
+  private syncVibeUniforms(vibe: VibePreset) {
     const U = this.finalMat.uniforms;
-    U.uSky.value.set(...(vibe.sky || [0.98, 0.45, 0.78]));
-    U.uHor.value.set(...(vibe.hor || [1.0, 0.92, 0.98]));
-    U.uBand.value.set(...(vibe.band || [0.65, 0.85, 1.0]));
-    U.uGround.value.set(...(vibe.ground || [0.26, 0.04, 0.18]));
-    U.uBg.value.set(...(vibe.bg || [0.075, 0.022, 0.07]));
+    if (vibe.sky) U.uSky.value.set(...vibe.sky);
+    if (vibe.hor) U.uHor.value.set(...vibe.hor);
+    if (vibe.band) U.uBand.value.set(...vibe.band);
+    if (vibe.ground) U.uGround.value.set(...vibe.ground);
+    if (vibe.bg) U.uBg.value.set(...vibe.bg);
     U.uFlat.value = vibe.flat ? 1.0 : 0.0;
+  }
+
+  applyTheme(vibe: VibePreset) {
+    this.syncVibeUniforms(vibe);
     this.dirty = true;
   }
 
@@ -301,12 +301,7 @@ export class RenderPipeline {
   ) {
     const U = this.finalMat.uniforms;
     U.uT.value = t;
-    if (vibe.sky) U.uSky.value.set(...vibe.sky);
-    if (vibe.hor) U.uHor.value.set(...vibe.hor);
-    if (vibe.band) U.uBand.value.set(...vibe.band);
-    if (vibe.ground) U.uGround.value.set(...vibe.ground);
-    if (vibe.bg) U.uBg.value.set(...vibe.bg);
-    U.uFlat.value = vibe.flat ? 1.0 : 0.0;
+    this.syncVibeUniforms(vibe);
     U.uIri.value = params.iri + (vibe.iri || 0);
     U.uBevel.value = params.bevel;
     U.uChisel.value = params.chisel !== undefined ? params.chisel : 0.7;
@@ -315,10 +310,33 @@ export class RenderPipeline {
     U.uDepth.value = params.depth;
   }
 
+  private renderMainPass(
+    target: THREE.WebGLRenderTarget | null,
+    params: BrushParams,
+    mode3d: boolean,
+    orb: { y: number; p: number; z: number }
+  ) {
+    if (mode3d) {
+      const d = this.d0 * orb.z;
+      const cp = Math.cos(orb.p);
+      this.cam3.position.set(
+        d * Math.sin(orb.y) * cp,
+        d * Math.sin(orb.p),
+        d * Math.cos(orb.y) * cp
+      );
+      this.cam3.lookAt(0, 0, 0);
+      this.finalMat.uniforms.uDepth.value = params.depth;
+      this.renderer.setRenderTarget(target);
+      this.renderer.render(this.scene3, this.cam3);
+    } else {
+      this.pass(this.finalMat, target);
+    }
+  }
+
   render(
     params: BrushParams,
     mode3d: boolean,
-    autoOrbit: boolean,
+    _autoOrbit: boolean,
     orb: { y: number; p: number; z: number },
     t: number,
     glowEnabled: boolean = true,
@@ -341,21 +359,7 @@ export class RenderPipeline {
     const mh = this.renderer.domElement.height;
 
     if ((glowVal > 0.001 || abVal > 0.001) && this.sceneRT) {
-      if (mode3d) {
-        const d = this.d0 * orb.z;
-        const cp = Math.cos(orb.p);
-        this.cam3.position.set(
-          d * Math.sin(orb.y) * cp,
-          d * Math.sin(orb.p),
-          d * Math.cos(orb.y) * cp
-        );
-        this.cam3.lookAt(0, 0, 0);
-        this.finalMat.uniforms.uDepth.value = params.depth;
-        this.renderer.setRenderTarget(this.sceneRT);
-        this.renderer.render(this.scene3, this.cam3);
-      } else {
-        this.pass(this.finalMat, this.sceneRT);
-      }
+      this.renderMainPass(this.sceneRT, params, mode3d, orb);
       this.starMat.uniforms.tScene.value = this.sceneRT.texture;
       this.starMat.uniforms.uPx.value.set(1 / mw, 1 / mh);
       this.starMat.uniforms.uT.value = t;
@@ -363,21 +367,7 @@ export class RenderPipeline {
       this.starMat.uniforms.uAberration.value = abVal;
       this.pass(this.starMat, null);
     } else {
-      if (mode3d) {
-        const d = this.d0 * orb.z;
-        const cp = Math.cos(orb.p);
-        this.cam3.position.set(
-          d * Math.sin(orb.y) * cp,
-          d * Math.sin(orb.p),
-          d * Math.cos(orb.y) * cp
-        );
-        this.cam3.lookAt(0, 0, 0);
-        this.finalMat.uniforms.uDepth.value = params.depth;
-        this.renderer.setRenderTarget(null);
-        this.renderer.render(this.scene3, this.cam3);
-      } else {
-        this.pass(this.finalMat, null);
-      }
+      this.renderMainPass(null, params, mode3d, orb);
     }
   }
 
@@ -391,6 +381,17 @@ export class RenderPipeline {
     [this.maskRT, this.tmpRT, this.cmbRT, this.sceneRT, ...this.blurLayers].forEach((rt) =>
       rt?.dispose()
     );
+    this.quad.geometry.dispose();
+    this.plane.geometry.dispose();
+    [
+      this.mOut,
+      this.mChr,
+      this.blurMat,
+      this.cmbMat,
+      this.finalMat,
+      this.solidMat,
+      this.starMat,
+    ].forEach((mat) => mat.dispose());
     this.renderer.dispose();
   }
 }

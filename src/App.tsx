@@ -1,16 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  BrushParams,
-  EraserMode,
-  HistoryStep,
-  RefImageState,
-  Stroke,
-  SymmetryMode,
-  ToolMode,
-  ViewTransform,
-  VibePreset,
-} from './types';
-import { DEFAULT_PARAMS, LIVE_PARAM_KEYS, PAL, SYMMETRY_MODES, hexToRgb01, rgb01ToHex } from './constants/presets';
+import React, { useCallback, useRef, useState } from 'react';
+import { BrushParams, EraserMode, RefImageState, Stroke, SymmetryMode, ToolMode, ViewTransform } from './types';
+import { DEFAULT_PARAMS, LIVE_PARAM_KEYS, PAL, SYMMETRY_MODES } from './constants/presets';
 import { RenderPipeline } from './core/renderPipeline';
 import { CanvasStage } from './components/CanvasStage';
 import { ControlPanel } from './components/ControlPanel';
@@ -21,16 +11,12 @@ import { ShortcutsModal } from './components/ShortcutsModal';
 import { DocsModal } from './components/DocsModal';
 import { BaseStyle, export3DModel, exportImage } from './core/export';
 import { buildStrokeMesh } from './core/geometry';
-import {
-  addSpikesToExistingStroke,
-  addStraightThornsToExistingStroke,
-  generateRandomSigil,
-  SigilStyle,
-} from './core/sigilGenerator';
+import { useThemeVibe } from './hooks/useThemeVibe';
+import { useHistoryTimeline } from './hooks/useHistoryTimeline';
+import { useSigilActions } from './hooks/useSigilActions';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 
 export const App: React.FC = () => {
-  const [currentVibe, setCurrentVibe] = useState<string>('Black Mercury');
-  const [customBgColor, setCustomBgColor] = useState<string | null>(null);
   const [params, setParams] = useState<BrushParams>(() => {
     const initialVibe = PAL['Black Mercury'] || PAL['Pink K-Pop'];
     return {
@@ -48,7 +34,6 @@ export const App: React.FC = () => {
   const [aberrationEnabled, setAberrationEnabled] = useState<boolean>(true);
   const [noiseEnabled, setNoiseEnabled] = useState<boolean>(false);
   const [exportStatus, setExportStatus] = useState<string>('');
-  const [sigilStyle, setSigilStyle] = useState<SigilStyle>('cyber-gothic');
   const [toolMode, setToolMode] = useState<ToolMode>('brush');
   const [eraserSize, setEraserSize] = useState<number>(28);
   const [eraserMode, setEraserMode] = useState<EraserMode>('slice');
@@ -57,6 +42,7 @@ export const App: React.FC = () => {
   selectedStrokeIndexRef.current = selectedStrokeIndex;
 
   const [panelVisible, setPanelVisible] = useState<boolean>(true);
+  const [videoSectionEnabled, setVideoSectionEnabled] = useState<boolean>(true);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState<boolean>(false);
   const [docsModalOpen, setDocsModalOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string>('');
@@ -77,27 +63,6 @@ export const App: React.FC = () => {
 
   const pipelineRef = useRef<RenderPipeline | null>(null);
   const strokesRef = useRef<Stroke[]>([]);
-  const undoStackRef = useRef<HistoryStep[]>([]);
-  const redoStackRef = useRef<HistoryStep[]>([]);
-  const [canRedo, setCanRedo] = useState<boolean>(false);
-
-  // Skeuomorphic Timeline Deck State
-  const [videoSectionEnabled, setVideoSectionEnabled] = useState<boolean>(true);
-  const [timelineVisible, setTimelineVisible] = useState<boolean>(true);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [replaySpeed, setReplaySpeed] = useState<number>(1);
-  const [isLooping, setIsLooping] = useState<boolean>(false);
-  const [historyState, setHistoryState] = useState<{
-    currentStep: number;
-    totalSteps: number;
-    strokeCount: number;
-    currentLabel: string;
-  }>({
-    currentStep: 0,
-    totalSteps: 0,
-    strokeCount: 0,
-    currentLabel: 'Initial Canvas',
-  });
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -146,114 +111,55 @@ export const App: React.FC = () => {
     });
   }, [showToast]);
 
-  // Update theme colors and CSS variables
-  const baseVibe = PAL[currentVibe] || PAL['Black Mercury'] || PAL['Pink K-Pop'];
-  const activeVibe = React.useMemo<VibePreset>(() => {
-    if (!customBgColor) return baseVibe;
-    const rgb = hexToRgb01(customBgColor);
-    return {
-      ...baseVibe,
-      bg: rgb,
-      theme: {
-        ...baseVibe.theme,
-        bg: customBgColor,
-      },
-    };
-  }, [baseVibe, customBgColor]);
-  (window as any).__ACTIVE_VIBE__ = activeVibe;
+  const {
+    currentVibe,
+    customBgColor,
+    activeVibe,
+    currentBgHex,
+    handleVibeChange,
+    handleBgColorChange,
+    handleResetBgColor,
+    handleCycleVibe,
+  } = useThemeVibe({ pipelineRef, setParams, showToast });
 
-  const currentBgHex = customBgColor || activeVibe.theme?.bg || rgb01ToHex(activeVibe.bg);
+  const {
+    undoStackRef,
+    redoStackRef,
+    canRedo,
+    timelineVisible,
+    setTimelineVisible,
+    isPlaying,
+    replaySpeed,
+    setReplaySpeed,
+    isLooping,
+    setIsLooping,
+    historyState,
+    pushHistoryStep,
+    handleJumpToStep,
+    handleUndo,
+    handleRedo,
+    handleStrokeAdded,
+    handleErasePerformed,
+    handleClear,
+    handleTogglePlay,
+  } = useHistoryTimeline({
+    pipelineRef,
+    strokesRef,
+    setSelectedStrokeIndex,
+    showToast,
+  });
 
-  const applyVibeStyles = useCallback((vibeName: string, customBg?: string | null) => {
-    const pData = PAL[vibeName];
-    if (!pData) return;
-    const t = pData.theme || {};
-    const rootStyle = document.documentElement.style;
-    if (t.accent) rootStyle.setProperty('--accent', t.accent);
-    if (t.accentGlow) rootStyle.setProperty('--accent-glow', t.accentGlow);
-    if (t.accentTrack) rootStyle.setProperty('--accent-track', t.accentTrack);
-    if (t.accentAmbient) rootStyle.setProperty('--accent-ambient', t.accentAmbient);
-
-    const bgToApply = customBg || t.bg || rgb01ToHex(pData.bg);
-    rootStyle.setProperty('--bg', bgToApply);
-    document.body.style.backgroundColor = bgToApply;
-
-    if (t.panelBg) rootStyle.setProperty('--panel-bg', t.panelBg);
-    if (t.panelBorder) rootStyle.setProperty('--panel-border', t.panelBorder);
-    if (t.panelBorderTop) rootStyle.setProperty('--panel-border-top', t.panelBorderTop);
-    if (t.readoutColor) rootStyle.setProperty('--readout-color', t.readoutColor);
-    if (t.readoutBg) rootStyle.setProperty('--readout-bg', t.readoutBg);
-    if (t.tabActiveBg) rootStyle.setProperty('--tab-active-bg', t.tabActiveBg);
-    if (t.tabBorderTop) rootStyle.setProperty('--tab-border-top', t.tabBorderTop);
-    if (t.toggleActiveBg) rootStyle.setProperty('--toggle-active-bg', t.toggleActiveBg);
-
-    if (t.accent) {
-      const hex = t.accent.replace('#', '');
-      const arrow = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23${hex}' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat calc(100% - 10px) center, linear-gradient(180deg, #282f3c 0%, #1c212c 50%, #131721 100%)`;
-      document.querySelectorAll('select').forEach((s) => ((s as HTMLElement).style.background = arrow));
-    }
-
-    const effectiveVibe: VibePreset = customBg ? {
-      ...pData,
-      bg: hexToRgb01(customBg),
-      theme: { ...pData.theme, bg: customBg },
-    } : pData;
-
-    if (pipelineRef.current) {
-      pipelineRef.current.applyTheme(effectiveVibe);
-    }
-  }, []);
-
-  const handleVibeChange = useCallback((vibeName: string) => {
-    if (!PAL[vibeName]) return;
-    setCurrentVibe(vibeName);
-    setCustomBgColor(null);
-    const pData = PAL[vibeName];
-    setParams((prev) => ({
-      ...prev,
-      ...(pData.params || {}),
-    }));
-    applyVibeStyles(vibeName, null);
-    showToast(`Vibe: ${vibeName}`);
-  }, [applyVibeStyles, showToast]);
-
-  const handleBgColorChange = useCallback((hex: string) => {
-    setCustomBgColor(hex);
-    const rgb = hexToRgb01(hex);
-    const updatedVibe: VibePreset = {
-      ...activeVibe,
-      bg: rgb,
-      theme: {
-        ...activeVibe.theme,
-        bg: hex,
-      },
-    };
-    (window as any).__ACTIVE_VIBE__ = updatedVibe;
-    document.documentElement.style.setProperty('--bg', hex);
-    document.body.style.backgroundColor = hex;
-    if (pipelineRef.current) {
-      pipelineRef.current.applyTheme(updatedVibe);
-      pipelineRef.current.dirty = true;
-    }
-    showToast(`Background: ${hex.toUpperCase()}`);
-  }, [activeVibe, showToast]);
-
-  const handleResetBgColor = useCallback(() => {
-    setCustomBgColor(null);
-    const defaultHex = baseVibe.theme?.bg || rgb01ToHex(baseVibe.bg);
-    (window as any).__ACTIVE_VIBE__ = baseVibe;
-    document.documentElement.style.setProperty('--bg', defaultHex);
-    document.body.style.backgroundColor = defaultHex;
-    if (pipelineRef.current) {
-      pipelineRef.current.applyTheme(baseVibe);
-      pipelineRef.current.dirty = true;
-    }
-    showToast(`Background: Default (${baseVibe.badge || 'VIBE'})`);
-  }, [baseVibe, showToast]);
-
-  useEffect(() => {
-    applyVibeStyles(currentVibe, customBgColor);
-  }, [currentVibe, customBgColor, applyVibeStyles]);
+  const { sigilStyle, setSigilStyle, handleGenerateSigil, handleAddThorns, handleAddSpikes } =
+    useSigilActions({
+      pipelineRef,
+      strokesRef,
+      selectedStrokeIndexRef,
+      params,
+      symmetry,
+      setSymmetry,
+      pushHistoryStep,
+      showToast,
+    });
 
   const handleParamChange = (key: string, value: number) => {
     setParams((prev) => {
@@ -269,321 +175,27 @@ export const App: React.FC = () => {
       const target = strokesRef.current[selIdx];
       target.params = { ...target.params, [key]: value };
       if (pipelineRef.current) {
-        buildStrokeMesh(
-          pipelineRef.current,
-          target,
-          window.innerWidth,
-          window.innerHeight,
-          false
-        );
+        buildStrokeMesh(pipelineRef.current, target, window.innerWidth, window.innerHeight, false);
         pipelineRef.current.dirty = true;
       }
     }
   };
 
-  // Skeuomorphic History Sync & Scrubbing Engine
-  const syncHistoryState = useCallback(() => {
-    const cur = undoStackRef.current.length;
-    const total = undoStackRef.current.length + redoStackRef.current.length;
-    const lastStep = cur > 0 ? undoStackRef.current[cur - 1] : null;
-    const currentLabel =
-      lastStep?.label || (cur === 0 ? 'Initial Canvas' : `Step #${cur}`);
-    setHistoryState({
-      currentStep: cur,
-      totalSteps: total,
-      strokeCount: strokesRef.current.length,
-      currentLabel,
-    });
-    setCanRedo(redoStackRef.current.length > 0);
-  }, []);
-
-  const handleJumpToStep = useCallback(
-    (targetStep: number) => {
-      if (!pipelineRef.current) return;
-      const total = undoStackRef.current.length + redoStackRef.current.length;
-      const clamped = Math.max(0, Math.min(total, Math.round(targetStep)));
-      const current = undoStackRef.current.length;
-      if (clamped === current) return;
-
-      if (clamped < current) {
-        // Undo (current - clamped) steps
-        const count = current - clamped;
-        for (let i = 0; i < count; i++) {
-          const step = undoStackRef.current.pop();
-          if (!step) break;
-          redoStackRef.current.push(step);
-
-          // Revert added strokes
-          step.added.forEach((s) => {
-            if (s.group) {
-              pipelineRef.current?.root.remove(s.group);
-            }
-            const idx = strokesRef.current.indexOf(s);
-            if (idx !== -1) strokesRef.current.splice(idx, 1);
-          });
-
-          // Restore removed strokes
-          step.removed.forEach((s) => {
-            if (!s.group) {
-              buildStrokeMesh(
-                pipelineRef.current!,
-                s,
-                window.innerWidth,
-                window.innerHeight,
-                false
-              );
-            } else {
-              pipelineRef.current?.root.add(s.group);
-            }
-            if (!strokesRef.current.includes(s)) {
-              strokesRef.current.push(s);
-            }
-          });
-        }
-      } else {
-        // Redo (clamped - current) steps
-        const count = clamped - current;
-        for (let i = 0; i < count; i++) {
-          const step = redoStackRef.current.pop();
-          if (!step) break;
-          undoStackRef.current.push(step);
-
-          // Re-remove removed strokes
-          step.removed.forEach((s) => {
-            if (s.group) {
-              pipelineRef.current?.root.remove(s.group);
-            }
-            const idx = strokesRef.current.indexOf(s);
-            if (idx !== -1) strokesRef.current.splice(idx, 1);
-          });
-
-          // Re-add added strokes
-          step.added.forEach((s) => {
-            if (!s.group) {
-              buildStrokeMesh(
-                pipelineRef.current!,
-                s,
-                window.innerWidth,
-                window.innerHeight,
-                false
-              );
-            } else {
-              pipelineRef.current?.root.add(s.group);
-            }
-            if (!strokesRef.current.includes(s)) {
-              strokesRef.current.push(s);
-            }
-          });
-        }
+  const handleSelectStroke = useCallback(
+    (index: number | null) => {
+      setSelectedStrokeIndex(index);
+      if (index !== null && strokesRef.current[index]) {
+        const sel = strokesRef.current[index];
+        setParams({ ...sel.params });
+        setSymmetry(sel.symmetry);
+        showToast(`🎯 Selected Stroke #${index + 1} (${sel.symmetry})`);
       }
-
-      pipelineRef.current.dirty = true;
-      syncHistoryState();
+      if (pipelineRef.current) {
+        pipelineRef.current.dirty = true;
+      }
     },
-    [syncHistoryState]
+    [showToast]
   );
-
-  const handleUndo = useCallback(() => {
-    if (!pipelineRef.current || undoStackRef.current.length === 0) return;
-    setIsPlaying(false);
-    handleJumpToStep(undoStackRef.current.length - 1);
-    showToast('Undo');
-  }, [handleJumpToStep, showToast]);
-
-  const handleRedo = useCallback(() => {
-    if (!pipelineRef.current || redoStackRef.current.length === 0) return;
-    setIsPlaying(false);
-    handleJumpToStep(undoStackRef.current.length + 1);
-    showToast('Redo');
-  }, [handleJumpToStep, showToast]);
-
-  const handleStrokeAdded = useCallback(
-    (stroke: Stroke) => {
-      setIsPlaying(false);
-      redoStackRef.current.forEach((step) => {
-        step.added.forEach((s) => s.group?.traverse((o: any) => o.geometry?.dispose()));
-      });
-      redoStackRef.current = [];
-      const num = undoStackRef.current.length + 1;
-      undoStackRef.current.push({
-        added: [stroke],
-        removed: [],
-        label: `Stroke #${num}`,
-      });
-      syncHistoryState();
-    },
-    [syncHistoryState]
-  );
-
-  const handleErasePerformed = useCallback(
-    (removed: Stroke[], added: Stroke[]) => {
-      setIsPlaying(false);
-      redoStackRef.current.forEach((step) => {
-        step.added.forEach((s) => s.group?.traverse((o: any) => o.geometry?.dispose()));
-      });
-      redoStackRef.current = [];
-      undoStackRef.current.push({
-        added,
-        removed,
-        label: 'Eraser Cut',
-      });
-      syncHistoryState();
-    },
-    [syncHistoryState]
-  );
-
-  const handleClear = useCallback(() => {
-    if (!pipelineRef.current || strokesRef.current.length === 0) return;
-    setIsPlaying(false);
-    const removed = strokesRef.current.splice(0);
-    removed.forEach((s) => {
-      if (s.group) {
-        pipelineRef.current?.root.remove(s.group);
-      }
-    });
-    undoStackRef.current.push({
-      added: [],
-      removed,
-      label: 'Clear Canvas',
-    });
-    redoStackRef.current = [];
-    setSelectedStrokeIndex(null);
-    pipelineRef.current.dirty = true;
-    syncHistoryState();
-    showToast('Canvas Cleared');
-  }, [showToast, syncHistoryState]);
-
-  const handleTogglePlay = useCallback(() => {
-    const total = undoStackRef.current.length + redoStackRef.current.length;
-    if (total === 0) {
-      showToast('Draw strokes first to replay');
-      return;
-    }
-    setIsPlaying((prev) => {
-      if (!prev) {
-        if (undoStackRef.current.length >= total) {
-          handleJumpToStep(0);
-        }
-        showToast('Replay Started (Space / K)');
-        return true;
-      } else {
-        showToast('Replay Paused');
-        return false;
-      }
-    });
-  }, [handleJumpToStep, showToast]);
-
-  // Replay animation ticker
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    const intervalMs = Math.round(320 / replaySpeed);
-    const timer = setInterval(() => {
-      const cur = undoStackRef.current.length;
-      const total = undoStackRef.current.length + redoStackRef.current.length;
-      if (cur < total) {
-        handleJumpToStep(cur + 1);
-      } else {
-        if (isLooping && total > 0) {
-          handleJumpToStep(0);
-        } else {
-          setIsPlaying(false);
-        }
-      }
-    }, intervalMs);
-
-    return () => clearInterval(timer);
-  }, [isPlaying, replaySpeed, isLooping, handleJumpToStep]);
-
-  // Procedural Sigil Generation on Random Path with Spikes
-  const handleGenerateSigil = useCallback(
-    (style?: SigilStyle) => {
-      if (!pipelineRef.current) return;
-
-      // 1. Move existing strokes to undo stack so generation is undoable
-      const removed = strokesRef.current.splice(0);
-      removed.forEach((s) => {
-        if (s.group) {
-          pipelineRef.current?.root.remove(s.group);
-        }
-      });
-
-      // 2. Compute center & scale
-      const cx = window.innerWidth / 2;
-      const cy = window.innerHeight / 2;
-      const scale = Math.min(cx, cy) * 0.72;
-
-      const chosenStyle = style || sigilStyle;
-
-      // 3. Choose suitable symmetry
-      let activeSym = symmetry;
-      if (chosenStyle === 'radial-seal') {
-        if (!activeSym.startsWith('Radial')) {
-          activeSym = 'Radial 4';
-          setSymmetry('Radial 4');
-        }
-      } else if (activeSym === 'None') {
-        activeSym = 'Mirror X';
-        setSymmetry('Mirror X');
-      }
-
-      // 4. Generate sigil strokes
-      const generated = generateRandomSigil({
-        center: { x: cx, y: cy },
-        scale,
-        symmetry: activeSym,
-        style: chosenStyle,
-        spikeDensity: 0.75,
-        spikeLength: 1.05,
-        brushParams: params,
-      });
-
-      // 5. Build 3D Three.js meshes
-      generated.forEach((s) => {
-        buildStrokeMesh(
-          pipelineRef.current!,
-          s,
-          window.innerWidth,
-          window.innerHeight,
-          false
-        );
-      });
-
-      const styleNames: Record<SigilStyle, string> = {
-        'cyber-gothic': 'Cyber Gothic',
-        'bio-mecha': 'Bio-Mecha',
-        'radial-seal': 'Radial Seal',
-        'minimal-blade': 'Minimal Blade',
-      };
-
-      setIsPlaying(false);
-      strokesRef.current.push(...generated);
-      undoStackRef.current.push({
-        added: generated,
-        removed,
-        label: `Sigil (${styleNames[chosenStyle]})`,
-      });
-      redoStackRef.current = [];
-      pipelineRef.current.dirty = true;
-      syncHistoryState();
-
-      showToast(`✨ Generated ${styleNames[chosenStyle]} Sigil`);
-    },
-    [params, symmetry, sigilStyle, showToast, syncHistoryState]
-  );
-
-  const handleSelectStroke = useCallback((index: number | null) => {
-    setSelectedStrokeIndex(index);
-    if (index !== null && strokesRef.current[index]) {
-      const sel = strokesRef.current[index];
-      setParams({ ...sel.params });
-      setSymmetry(sel.symmetry);
-      showToast(`🎯 Selected Stroke #${index + 1} (${sel.symmetry})`);
-    }
-    if (pipelineRef.current) {
-      pipelineRef.current.dirty = true;
-    }
-  }, [showToast]);
 
   const handleDeselectStroke = useCallback(() => {
     setSelectedStrokeIndex(null);
@@ -606,151 +218,66 @@ export const App: React.FC = () => {
     }
 
     strokesRef.current.splice(selIdx, 1);
-    undoStackRef.current.push({
+    setSelectedStrokeIndex(null);
+    if (pipelineRef.current) {
+      pipelineRef.current.dirty = true;
+    }
+    pushHistoryStep({
       added: [],
       removed: [target],
       label: `Delete Stroke #${selIdx + 1}`,
     });
-    redoStackRef.current = [];
-    setSelectedStrokeIndex(null);
-    syncHistoryState();
-    if (pipelineRef.current) {
-      pipelineRef.current.dirty = true;
-    }
     showToast('🗑️ Deleted Stroke');
-  }, [syncHistoryState, showToast]);
+  }, [pushHistoryStep, showToast]);
 
   const handleStrokeTransformed = useCallback(
     (_strokeIndex: number, oldStroke: Stroke, newStroke: Stroke) => {
-      undoStackRef.current.push({
+      pushHistoryStep({
         added: [newStroke],
         removed: [oldStroke],
         label: 'Transform Endpoints',
       });
-      redoStackRef.current = [];
-      syncHistoryState();
       showToast('⚡ Transformed Stroke Endpoints');
     },
-    [syncHistoryState, showToast]
+    [pushHistoryStep, showToast]
   );
 
-  const handleSymmetryChange = useCallback((newSymmetry: SymmetryMode) => {
-    setSymmetry(newSymmetry);
-    const selIdx = selectedStrokeIndexRef.current;
-    if (selIdx !== null && strokesRef.current[selIdx]) {
-      const target = strokesRef.current[selIdx];
-      target.symmetry = newSymmetry;
-      if (pipelineRef.current) {
-        buildStrokeMesh(
-          pipelineRef.current,
-          target,
-          window.innerWidth,
-          window.innerHeight,
-          false
-        );
-        pipelineRef.current.dirty = true;
+  const handleSymmetryChange = useCallback(
+    (newSymmetry: SymmetryMode) => {
+      setSymmetry(newSymmetry);
+      const selIdx = selectedStrokeIndexRef.current;
+      if (selIdx !== null && strokesRef.current[selIdx]) {
+        const target = strokesRef.current[selIdx];
+        target.symmetry = newSymmetry;
+        if (pipelineRef.current) {
+          buildStrokeMesh(pipelineRef.current, target, window.innerWidth, window.innerHeight, false);
+          pipelineRef.current.dirty = true;
+        }
+        showToast(`Stroke #${selIdx + 1} Symmetry: ${newSymmetry}`);
       }
-      showToast(`Stroke #${selIdx + 1} Symmetry: ${newSymmetry}`);
-    }
-  }, [showToast]);
+    },
+    [showToast]
+  );
 
-  const handleAddThorns = useCallback(() => {
-    if (!pipelineRef.current || strokesRef.current.length === 0) {
-      showToast('Draw a stroke first to attach straight thorns');
-      return;
-    }
-    const selIdx = selectedStrokeIndexRef.current;
-    const targetIdx = selIdx !== null && strokesRef.current[selIdx]
-      ? selIdx
-      : strokesRef.current.length - 1;
-    const target = strokesRef.current[targetIdx];
-
-    const newThorns = addStraightThornsToExistingStroke(target, 8, 1.15, 'alternating', 75);
-    if (newThorns.length === 0) {
-      showToast('Could not attach thorns to stroke');
-      return;
-    }
-
-    setIsPlaying(false);
-    newThorns.forEach((s) => {
-      buildStrokeMesh(
-        pipelineRef.current!,
-        s,
-        window.innerWidth,
-        window.innerHeight,
-        false
-      );
-    });
-
-    strokesRef.current.push(...newThorns);
-    undoStackRef.current.push({
-      added: newThorns,
-      removed: [],
-      label: `Attached Straight Thorns to Stroke #${targetIdx + 1}`,
-    });
-    redoStackRef.current = [];
-    pipelineRef.current.dirty = true;
-    syncHistoryState();
-    showToast(`🗡️ Attached Straight Thorns to Stroke #${targetIdx + 1}`);
-  }, [showToast, syncHistoryState]);
-
-  const handleAddSpikes = useCallback(() => {
-    if (!pipelineRef.current || strokesRef.current.length === 0) {
-      showToast('Draw a stroke first to attach spikes');
-      return;
-    }
-    const selIdx = selectedStrokeIndexRef.current;
-    const targetIdx = selIdx !== null && strokesRef.current[selIdx]
-      ? selIdx
-      : strokesRef.current.length - 1;
-    const target = strokesRef.current[targetIdx];
-
-    const newSpikes = addSpikesToExistingStroke(target, 6, 1.15);
-    if (newSpikes.length === 0) {
-      showToast('Could not attach spikes to stroke');
-      return;
-    }
-
-    setIsPlaying(false);
-    newSpikes.forEach((s) => {
-      buildStrokeMesh(
-        pipelineRef.current!,
-        s,
-        window.innerWidth,
-        window.innerHeight,
-        false
-      );
-    });
-
-    strokesRef.current.push(...newSpikes);
-    undoStackRef.current.push({
-      added: newSpikes,
-      removed: [],
-      label: `Attached Spikes to Stroke #${targetIdx + 1}`,
-    });
-    redoStackRef.current = [];
-    pipelineRef.current.dirty = true;
-    syncHistoryState();
-    showToast(`⚡ Attached Spikes to Stroke #${targetIdx + 1}`);
-  }, [showToast, syncHistoryState]);
-
-  // Zoom controls
-  const handleZoom = useCallback((factor: number) => {
-    const cx = window.innerWidth / 2;
-    const cy = window.innerHeight / 2;
-    setView((v) => {
-      const newScale = Math.max(0.2, Math.min(6.0, +(v.scale * factor).toFixed(3)));
-      const ratio = newScale / v.scale;
-      const nextView = {
-        scale: newScale,
-        x: cx - (cx - v.x) * ratio,
-        y: cy - (cy - v.y) * ratio,
-      };
-      pipelineRef.current?.applyViewTransform(nextView);
-      showToast(`Zoom: ${Math.round(newScale * 100)}%`);
-      return nextView;
-    });
-  }, [showToast]);
+  const handleZoom = useCallback(
+    (factor: number) => {
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      setView((v) => {
+        const newScale = Math.max(0.2, Math.min(6.0, +(v.scale * factor).toFixed(3)));
+        const ratio = newScale / v.scale;
+        const nextView = {
+          scale: newScale,
+          x: cx - (cx - v.x) * ratio,
+          y: cy - (cy - v.y) * ratio,
+        };
+        pipelineRef.current?.applyViewTransform(nextView);
+        showToast(`Zoom: ${Math.round(newScale * 100)}%`);
+        return nextView;
+      });
+    },
+    [showToast]
+  );
 
   const handleZoomReset = useCallback(() => {
     const nextView = { scale: 1, x: 0, y: 0 };
@@ -759,7 +286,6 @@ export const App: React.FC = () => {
     showToast('Zoom Reset: 100%');
   }, [showToast]);
 
-  // Pan Nudge controls
   const handlePanNudge = useCallback((dx: number, dy: number) => {
     setView((v) => {
       const nextView = { ...v, x: v.x + dx, y: v.y + dy };
@@ -768,16 +294,17 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  // Brush width nudge
-  const handleBrushWidthNudge = useCallback((delta: number) => {
-    setParams((prev) => {
-      const newWidth = Math.max(1, Math.min(80, +(prev.width + delta).toFixed(1)));
-      showToast(`Brush Width: ${newWidth}px`);
-      return { ...prev, width: newWidth };
-    });
-  }, [showToast]);
+  const handleBrushWidthNudge = useCallback(
+    (delta: number) => {
+      setParams((prev) => {
+        const newWidth = Math.max(1, Math.min(80, +(prev.width + delta).toFixed(1)));
+        showToast(`Brush Width: ${newWidth}px`);
+        return { ...prev, width: newWidth };
+      });
+    },
+    [showToast]
+  );
 
-  // Symmetry cycling
   const handleCycleSymmetry = useCallback(() => {
     setSymmetry((cur) => {
       const idx = SYMMETRY_MODES.indexOf(cur);
@@ -787,27 +314,6 @@ export const App: React.FC = () => {
     });
   }, [showToast]);
 
-  // Vibe cycling
-  const handleCycleVibe = useCallback((reverse: boolean = false) => {
-    const keys = Object.keys(PAL);
-    setCurrentVibe((cur) => {
-      const idx = keys.indexOf(cur);
-      const nextIdx = reverse
-        ? (idx - 1 + keys.length) % keys.length
-        : (idx + 1) % keys.length;
-      const nextKey = keys[nextIdx];
-      const pData = PAL[nextKey];
-      setParams((prev) => ({
-        ...prev,
-        ...(pData.params || {}),
-      }));
-      applyVibeStyles(nextKey);
-      showToast(`Vibe: ${nextKey}`);
-      return nextKey;
-    });
-  }, [applyVibeStyles, showToast]);
-
-  // Reference Image Management
   const loadRefImage = useCallback((file: File) => {
     if (!file || !file.type.startsWith('image/')) return;
     const reader = new FileReader();
@@ -835,362 +341,27 @@ export const App: React.FC = () => {
     reader.readAsDataURL(file);
   }, []);
 
-  // Clipboard Paste & Drag Drop
-  useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (const item of Array.from(items)) {
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          if (file) loadRefImage(file);
-          break;
-        }
-      }
-    };
-    const onDragOver = (e: DragEvent) => e.preventDefault();
-    const onDrop = (e: DragEvent) => {
-      e.preventDefault();
-      const file = e.dataTransfer?.files?.[0];
-      if (file && file.type.startsWith('image/')) loadRefImage(file);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const isInput =
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'SELECT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable);
-
-      if (e.key === 'Escape') {
-        if (docsModalOpen) {
-          e.preventDefault();
-          setDocsModalOpen(false);
-          return;
-        }
-        if (shortcutsModalOpen) {
-          e.preventDefault();
-          setShortcutsModalOpen(false);
-          return;
-        }
-        if (isInput) {
-          target.blur();
-          return;
-        }
-        if (panMode) {
-          setPanMode(false);
-          showToast('Pan Mode: Off');
-        }
-        return;
-      }
-
-      if (isInput) return;
-
-      // Parameter Field Manual / Docs Lab modal (F1 or Shift+D)
-      if (e.key === 'F1' || (e.shiftKey && e.key.toLowerCase() === 'd')) {
-        e.preventDefault();
-        setDocsModalOpen((prev) => !prev);
-        return;
-      }
-
-      // Help / Shortcuts modal (? or /)
-      if (e.key === '?' || (e.key === '/' && !e.ctrlKey && !e.metaKey)) {
-        e.preventDefault();
-        setShortcutsModalOpen((prev) => !prev);
-        return;
-      }
-
-      // Undo & Redo
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) {
-          handleRedo();
-        } else {
-          handleUndo();
-        }
-        return;
-      }
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        handleRedo();
-        return;
-      }
-
-      // Brush Width [ and ]
-      if (e.key === '[') {
-        e.preventDefault();
-        handleBrushWidthNudge(e.shiftKey ? -10 : -2);
-        return;
-      }
-      if (e.key === ']') {
-        e.preventDefault();
-        handleBrushWidthNudge(e.shiftKey ? 10 : 2);
-        return;
-      }
-
-      // Zoom + / - / 0 / F
-      if (e.key === '+' || e.key === '=') {
-        e.preventDefault();
-        handleZoom(1.18);
-        return;
-      }
-      if (e.key === '-' || e.key === '_') {
-        e.preventDefault();
-        handleZoom(0.85);
-        return;
-      }
-      if (e.key === '0' || e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        handleZoomReset();
-        return;
-      }
-
-      // Pan Nudge with Arrow Keys
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        handlePanNudge(e.shiftKey ? 120 : 40, 0);
-        return;
-      }
-      if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        handlePanNudge(e.shiftKey ? -120 : -40, 0);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        handlePanNudge(0, e.shiftKey ? 120 : 40);
-        return;
-      }
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        handlePanNudge(0, e.shiftKey ? -120 : -40);
-        return;
-      }
-
-      // Mode toggles
-      const k = e.key.toLowerCase();
-      if (k === 'h') {
-        e.preventDefault();
-        setPanMode((prev) => {
-          showToast(!prev ? 'Pan Tool: On' : 'Pan Tool: Off');
-          return !prev;
-        });
-        return;
-      }
-
-      if (k === 'd' || e.key === '3') {
-        e.preventDefault();
-        setMode3d((prev) => {
-          showToast(!prev ? '3D View: On' : '3D View: Off');
-          return !prev;
-        });
-        return;
-      }
-
-      if (k === 'o') {
-        e.preventDefault();
-        setAutoOrbit((prev) => {
-          showToast(!prev ? 'Auto Orbit: On' : 'Auto Orbit: Off');
-          return !prev;
-        });
-        return;
-      }
-
-      // Symmetry cycle
-      if (k === 'x') {
-        e.preventDefault();
-        handleCycleSymmetry();
-        return;
-      }
-
-      // Vibe cycle
-      if (k === 'v') {
-        e.preventDefault();
-        handleCycleVibe(e.shiftKey);
-        return;
-      }
-
-      // Animation toggle
-      if (k === 'a') {
-        e.preventDefault();
-        setAnimOn((prev) => {
-          showToast(!prev ? 'Animation: On' : 'Animation: Off');
-          return !prev;
-        });
-        return;
-      }
-
-      // Post-FX toggles
-      if (k === 'g') {
-        e.preventDefault();
-        setGlowEnabled((prev) => {
-          showToast(!prev ? 'Star Glow: On' : 'Star Glow: Off');
-          return !prev;
-        });
-        return;
-      }
-
-      if (k === 'b') {
-        e.preventDefault();
-        setAberrationEnabled((prev) => {
-          showToast(!prev ? 'Aberration: On' : 'Aberration: Off');
-          return !prev;
-        });
-        return;
-      }
-
-      if (k === 'n') {
-        e.preventDefault();
-        setNoiseEnabled((prev) => {
-          showToast(!prev ? 'Film Noise: On' : 'Film Noise: Off');
-          return !prev;
-        });
-        return;
-      }
-
-      // Escape: deselect stroke
-      if (e.key === 'Escape') {
-        if (selectedStrokeIndexRef.current !== null) {
-          e.preventDefault();
-          handleDeselectStroke();
-          return;
-        }
-      }
-
-      // Delete / Backspace: delete selected stroke
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedStrokeIndexRef.current !== null && (e.target as HTMLElement)?.tagName !== 'INPUT') {
-          e.preventDefault();
-          handleDeleteSelectedStroke();
-          return;
-        }
-      }
-
-      // Switch to Select tool (S)
-      if (k === 's' && !e.ctrlKey && !e.metaKey && (e.target as HTMLElement)?.tagName !== 'INPUT') {
-        e.preventDefault();
-        setToolMode((prev) => {
-          const next = prev === 'select' ? 'brush' : 'select';
-          showToast(next === 'select' ? 'Tool: Select & Modify (S)' : 'Tool: Brush (S)');
-          return next;
-        });
-        return;
-      }
-
-      // Attach Straight Thorns (Shift+T)
-      if (k === 't' && e.shiftKey && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        handleAddThorns();
-        return;
-      }
-
-      // Toggle Eraser / Brush (E)
-      if (k === 'e' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        setToolMode((prev) => {
-          const next = prev === 'eraser' ? 'brush' : 'eraser';
-          showToast(next === 'eraser' ? 'Tool: Eraser (E)' : 'Tool: Brush (E)');
-          return next;
-        });
-        return;
-      }
-
-      // Generate random sigil with spikes (R) or attach spikes (Shift+R)
-      if (k === 'r' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        if (e.shiftKey) {
-          handleAddSpikes();
-        } else {
-          handleGenerateSigil();
-        }
-        return;
-      }
-
-      // Clear canvas (Shift+C)
-      if (e.key === 'C' && e.shiftKey) {
-        e.preventDefault();
-        handleClear();
-        return;
-      }
-
-      // Toggle Panel (Tab or P)
-      if (e.key === 'Tab' || k === 'p') {
-        e.preventDefault();
-        setPanelVisible((prev) => {
-          showToast(!prev ? 'Panel: Shown' : 'Panel: Hidden (Tab / P)');
-          return !prev;
-        });
-        return;
-      }
-
-      // Toggle Chrono Timeline Deck (T)
-      if (k === 't' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        if (!videoSectionEnabled) {
-          setVideoSectionEnabled(true);
-          setTimelineVisible(true);
-          showToast('Video Section: On');
-        } else {
-          setTimelineVisible((prev) => {
-            showToast(!prev ? 'Timeline Deck: Shown' : 'Timeline Deck: Hidden (T)');
-            return !prev;
-          });
-        }
-        return;
-      }
-
-      // Play / Pause Replay (K)
-      if (k === 'k' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        handleTogglePlay();
-        return;
-      }
-
-      // Timeline Step Backward (, or <)
-      if (e.key === ',' || e.key === '<') {
-        e.preventDefault();
-        handleUndo();
-        return;
-      }
-
-      // Timeline Step Forward (. or >)
-      if (e.key === '.' || e.key === '>') {
-        e.preventDefault();
-        handleRedo();
-        return;
-      }
-
-      // Jump to Start (Home)
-      if (e.key === 'Home') {
-        e.preventDefault();
-        handleJumpToStep(0);
-        showToast('Timeline: Jump to Start');
-        return;
-      }
-
-      // Jump to End (End)
-      if (e.key === 'End') {
-        e.preventDefault();
-        const total = undoStackRef.current.length + redoStackRef.current.length;
-        handleJumpToStep(total);
-        showToast('Timeline: Jump to End');
-        return;
-      }
-    };
-
-    window.addEventListener('paste', onPaste);
-    window.addEventListener('dragover', onDragOver);
-    window.addEventListener('drop', onDrop);
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('paste', onPaste);
-      window.removeEventListener('dragover', onDragOver);
-      window.removeEventListener('drop', onDrop);
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [
+  useGlobalShortcuts({
+    undoStackRef,
+    redoStackRef,
+    selectedStrokeIndexRef,
+    docsModalOpen,
+    setDocsModalOpen,
+    shortcutsModalOpen,
+    setShortcutsModalOpen,
+    panMode,
+    setPanMode,
+    setMode3d,
+    setAutoOrbit,
+    setAnimOn,
+    setGlowEnabled,
+    setAberrationEnabled,
+    setNoiseEnabled,
+    setToolMode,
+    setPanelVisible,
+    videoSectionEnabled,
+    setVideoSectionEnabled,
+    setTimelineVisible,
     handleUndo,
     handleRedo,
     handleJumpToStep,
@@ -1203,15 +374,14 @@ export const App: React.FC = () => {
     handleCycleSymmetry,
     handleCycleVibe,
     handleGenerateSigil,
+    handleAddThorns,
     handleAddSpikes,
+    handleDeselectStroke,
+    handleDeleteSelectedStroke,
     loadRefImage,
-    shortcutsModalOpen,
-    panMode,
-    videoSectionEnabled,
     showToast,
-  ]);
+  });
 
-  // Export handlers
   const handleExportImage = async (
     isTransparentPNG: boolean,
     aspect: string,
@@ -1277,6 +447,7 @@ export const App: React.FC = () => {
         pipelineRef={pipelineRef}
         strokesRef={strokesRef}
         params={params}
+        activeVibe={activeVibe}
         symmetry={symmetry}
         guideColor={activeVibe.theme.guideColor}
         view={view}
