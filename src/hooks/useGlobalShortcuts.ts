@@ -19,8 +19,6 @@ interface UseGlobalShortcutsOptions {
   setNoiseEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setToolMode: React.Dispatch<React.SetStateAction<ToolMode>>;
   setPanelVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  videoSectionEnabled: boolean;
-  setVideoSectionEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setTimelineVisible: React.Dispatch<React.SetStateAction<boolean>>;
   handleUndo: () => void;
   handleRedo: () => void;
@@ -61,8 +59,6 @@ export function useGlobalShortcuts(opts: UseGlobalShortcutsOptions) {
     setNoiseEnabled,
     setToolMode,
     setPanelVisible,
-    videoSectionEnabled,
-    setVideoSectionEnabled,
     setTimelineVisible,
     handleUndo,
     handleRedo,
@@ -347,16 +343,10 @@ export function useGlobalShortcuts(opts: UseGlobalShortcutsOptions) {
 
       if (k === 't' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        if (!videoSectionEnabled) {
-          setVideoSectionEnabled(true);
-          setTimelineVisible(true);
-          showToast('Video Section: On');
-        } else {
-          setTimelineVisible((prev) => {
-            showToast(!prev ? 'Timeline Deck: Shown' : 'Timeline Deck: Hidden (T)');
-            return !prev;
-          });
-        }
+        setTimelineVisible((prev) => {
+          showToast(!prev ? 'Timeline Deck: Shown' : 'Timeline Deck: Hidden (T)');
+          return !prev;
+        });
         return;
       }
 
@@ -438,10 +428,8 @@ export function useGlobalShortcuts(opts: UseGlobalShortcutsOptions) {
     setShortcutsModalOpen,
     setTimelineVisible,
     setToolMode,
-    setVideoSectionEnabled,
     shortcutsModalOpen,
     showToast,
     undoStackRef,
-    videoSectionEnabled,
   ]);
 }

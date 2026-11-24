@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { BrushParams, EraserMode, RefImageState, SymmetryMode, ToolMode, VibePreset } from '../types';
 import { PAL, PARAM_DEFS, SYMMETRY_MODES } from '../constants/presets';
 import { BaseStyle } from '../core/export';
@@ -143,14 +143,9 @@ interface ControlPanelProps {
   onSymmetryChange: (sym: SymmetryMode) => void;
 
   // Actions
-  onUndo: () => void;
-  onRedo?: () => void;
-  canRedo?: boolean;
   onClear: () => void;
   onOpenShortcuts?: () => void;
   onOpenDocs?: () => void;
-  videoSectionEnabled: boolean;
-  onToggleVideoSection: () => void;
   onToggleCollapse?: () => void;
 
   // Comp FX Toggles
@@ -206,14 +201,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   isCustomBg = false,
   symmetry,
   onSymmetryChange,
-  onUndo,
-  onRedo,
-  canRedo = false,
   onClear,
   onOpenShortcuts,
   onOpenDocs,
-  videoSectionEnabled,
-  onToggleVideoSection,
   onToggleCollapse,
   glowEnabled,
   onToggleGlow,
@@ -245,21 +235,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onEraserModeChange,
 }) => {
   const [activeTab, setActiveTab] = useState<'brush' | 'ref' | 'export'>('brush');
-  const [menuOpen, setMenuOpen] = useState<boolean>(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const [collapsedDecks, setCollapsedDecks] = useState<Record<string, boolean>>({});
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const closeMenu = (event: PointerEvent) => {
-      if (event.target instanceof Node && !menuRef.current?.contains(event.target)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('pointerdown', closeMenu);
-    return () => document.removeEventListener('pointerdown', closeMenu);
-  }, [menuOpen]);
 
   const toggleDeck = (id: string) => {
     setCollapsedDecks((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -306,33 +283,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <span className="brand-logo-text">Y2K NEOTHORN</span>
           </div>
           <div className="panel-brand-actions">
-            <div className="main-menu-wrap" ref={menuRef}>
-              <button
-                className="shortcuts-icon-btn"
-                onClick={() => setMenuOpen((open) => !open)}
-                title="Main menu"
-                aria-label="Main menu"
-                aria-expanded={menuOpen}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <line x1="4" y1="6" x2="20" y2="6" />
-                  <line x1="4" y1="12" x2="20" y2="12" />
-                  <line x1="4" y1="18" x2="20" y2="18" />
-                </svg>
-              </button>
-              {menuOpen && (
-                <div className="main-menu-popover">
-                  <div className="main-menu-title">Main Menu</div>
-                  <label className="main-menu-option">
-                    <span>
-                      <strong>Video section</strong>
-                      <small>Show the bottom timeline and playback controls</small>
-                    </span>
-                    <input type="checkbox" checked={videoSectionEnabled} onChange={onToggleVideoSection} />
-                  </label>
-                </div>
-              )}
-            </div>
             {onOpenDocs && (
               <button
                 className="shortcuts-icon-btn docs-icon-btn"
@@ -540,17 +490,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               id="tool"
               title="Tool & Material"
               badge={toolMode.toUpperCase()}
-              headerAction={
-                onOpenDocs && (
-                  <button
-                    className="deck-action-pill"
-                    onClick={onOpenDocs}
-                    title="Open Parameter Docs & Interactive Lab"
-                  >
-                    Docs ↗
-                  </button>
-                )
-              }
               isCollapsed={!!collapsedDecks['tool']}
               onToggle={() => toggleDeck('tool')}
             >
@@ -771,30 +710,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               isCollapsed={!!collapsedDecks['history']}
               onToggle={() => toggleDeck('history')}
             >
-              <div className="buttons history-actions" style={{ marginTop: 0 }}>
-                <div className="undo-redo-group">
-                  <button id="undo" onClick={onUndo} title="Undo Stroke (Ctrl+Z)">
-                    Undo
-                  </button>
-                  {onRedo && (
-                    <button
-                      id="redo"
-                      onClick={onRedo}
-                      title="Redo Stroke (Ctrl+Shift+Z / Ctrl+Y)"
-                      disabled={!canRedo}
-                      style={{ opacity: canRedo ? 1 : 0.4 }}
-                    >
-                      Redo
-                    </button>
-                  )}
-                </div>
+              <div className="buttons w" style={{ marginTop: 0 }}>
                 <button
                   id="clear"
                   className={`clear-btn ${clearConfirming ? 'confirming' : ''}`}
                   onClick={handleClearClick}
                   title={clearConfirming ? 'Click again to confirm wipe canvas' : 'Clear Canvas (Shift+C)'}
                 >
-                  {clearConfirming ? 'Confirm?' : 'Clear'}
+                  {clearConfirming ? 'Confirm Clear?' : 'Clear Canvas'}
                 </button>
               </div>
             </CollapsibleDeck>

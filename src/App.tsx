@@ -42,7 +42,6 @@ export const App: React.FC = () => {
   selectedStrokeIndexRef.current = selectedStrokeIndex;
 
   const [panelVisible, setPanelVisible] = useState<boolean>(true);
-  const [videoSectionEnabled, setVideoSectionEnabled] = useState<boolean>(true);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState<boolean>(false);
   const [docsModalOpen, setDocsModalOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string>('');
@@ -125,7 +124,6 @@ export const App: React.FC = () => {
   const {
     undoStackRef,
     redoStackRef,
-    canRedo,
     timelineVisible,
     setTimelineVisible,
     isPlaying,
@@ -359,8 +357,6 @@ export const App: React.FC = () => {
     setNoiseEnabled,
     setToolMode,
     setPanelVisible,
-    videoSectionEnabled,
-    setVideoSectionEnabled,
     setTimelineVisible,
     handleUndo,
     handleRedo,
@@ -484,9 +480,6 @@ export const App: React.FC = () => {
           isCustomBg={customBgColor !== null}
           symmetry={symmetry}
           onSymmetryChange={handleSymmetryChange}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          canRedo={canRedo}
           onClear={handleClear}
           glowEnabled={glowEnabled}
           onToggleGlow={() => {
@@ -551,8 +544,6 @@ export const App: React.FC = () => {
           onEraserModeChange={setEraserMode}
           onOpenShortcuts={() => setShortcutsModalOpen(true)}
           onOpenDocs={() => setDocsModalOpen(true)}
-          videoSectionEnabled={videoSectionEnabled}
-          onToggleVideoSection={() => setVideoSectionEnabled((enabled) => !enabled)}
           onToggleCollapse={() => {
             setPanelVisible(false);
             showToast('Panel: Hidden (Tab / P)');
@@ -591,13 +582,12 @@ export const App: React.FC = () => {
         onZoomReset={handleZoomReset}
         panMode={panMode}
         onTogglePan={handleTogglePanMode}
-        timelineVisible={videoSectionEnabled && timelineVisible}
+        timelineVisible={timelineVisible}
       />
 
       {toastMessage && <div className="hud-toast">{toastMessage}</div>}
 
       <TimelineDeck
-        enabled={videoSectionEnabled}
         currentStep={historyState.currentStep}
         totalSteps={historyState.totalSteps}
         currentLabel={historyState.currentLabel}

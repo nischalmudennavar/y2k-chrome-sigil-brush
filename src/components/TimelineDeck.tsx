@@ -1,7 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 
 interface TimelineDeckProps {
-  enabled: boolean;
   currentStep: number;
   totalSteps: number;
   currentLabel: string;
@@ -22,7 +21,6 @@ interface TimelineDeckProps {
 }
 
 export const TimelineDeck: React.FC<TimelineDeckProps> = ({
-  enabled,
   currentStep,
   totalSteps,
   currentLabel,
@@ -120,8 +118,6 @@ export const TimelineDeck: React.FC<TimelineDeckProps> = ({
     else if (speed === 2) onSpeedChange(4);
     else onSpeedChange(0.5);
   };
-
-  if (!enabled) return null;
 
   if (!visible) {
     return (
