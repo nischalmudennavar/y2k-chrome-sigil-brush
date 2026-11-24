@@ -61,26 +61,29 @@ export const UIMetaballLayer: React.FC = () => {
       }
 
       const t = Math.max(0, Math.min(1, 1 - bestInfo.gap / MERGE_THRESHOLD_PX));
-      svg.style.opacity = String(Math.min(1, t * 1.35));
-      dock.classList.toggle('is-metaball-merged', bestInfo.gap < 28);
+      svg.style.opacity = String(Math.min(1, t * 1.4));
+      const isMerged = bestInfo.gap < 48;
+      dock.classList.toggle('is-metaball-merged', isMerged);
 
       const dRect = dockRectRef.current;
       const tRect = targetRectRef.current;
       const bridge = bridgeRef.current;
       const glowBridge = glowBridgeRef.current;
 
+      // Slight inset compensates for goo blur expansion so silhouette hugs panel edges cleanly
+      const inset = 5;
       if (dRect) {
-        dRect.setAttribute('x', String(dockBox.left));
-        dRect.setAttribute('y', String(dockBox.top));
-        dRect.setAttribute('width', String(dockBox.width));
-        dRect.setAttribute('height', String(dockBox.height));
+        dRect.setAttribute('x', String(dockBox.left + inset));
+        dRect.setAttribute('y', String(dockBox.top + inset));
+        dRect.setAttribute('width', String(Math.max(10, dockBox.width - inset * 2)));
+        dRect.setAttribute('height', String(Math.max(10, dockBox.height - inset * 2)));
       }
 
       if (tRect) {
-        tRect.setAttribute('x', String(bestTarget.left));
-        tRect.setAttribute('y', String(bestTarget.top));
-        tRect.setAttribute('width', String(bestTarget.width));
-        tRect.setAttribute('height', String(bestTarget.height));
+        tRect.setAttribute('x', String(bestTarget.left + inset));
+        tRect.setAttribute('y', String(bestTarget.top + inset));
+        tRect.setAttribute('width', String(Math.max(10, bestTarget.width - inset * 2)));
+        tRect.setAttribute('height', String(Math.max(10, bestTarget.height - inset * 2)));
       }
 
       const mx = (bestInfo.ax + bestInfo.bx) / 2;
@@ -114,11 +117,11 @@ export const UIMetaballLayer: React.FC = () => {
     <svg ref={svgRef} className="ui-metaball-layer" aria-hidden="true">
       <defs>
         <filter id="y2k-ui-metaball" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="blur" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur" />
           <feColorMatrix
             in="blur"
             mode="matrix"
-            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -10"
+            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 28 -14"
             result="goo"
           />
           <feComposite in="SourceGraphic" in2="goo" operator="atop" />
