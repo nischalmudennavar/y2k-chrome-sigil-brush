@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
+import { useResizablePanel } from '../hooks/useResizablePanel';
 
 interface TimelineDeckProps {
   currentStep: number;
@@ -40,6 +41,12 @@ export const TimelineDeck: React.FC<TimelineDeckProps> = ({
   onToggleVisible,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+  const { size, startResize } = useResizablePanel({
+    initialWidth: 560,
+    initialHeight: null,
+    minWidth: 320,
+    maxWidth: 960,
+  });
   const audioCtxRef = useRef<AudioContext | null>(null);
   const lastClickStepRef = useRef<number>(currentStep);
 
@@ -149,7 +156,23 @@ export const TimelineDeck: React.FC<TimelineDeckProps> = ({
   const progressPct = totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0;
 
   return (
-    <div className={`timeline-deck ${isCollapsed ? 'collapsed' : ''}`} id="timeline-deck">
+    <div
+      className={`timeline-deck ${isCollapsed ? 'collapsed' : ''}`}
+      id="timeline-deck"
+      style={{ width: size.width ? `${size.width}px` : undefined }}
+    >
+      <div
+        className="resize-handle resize-handle-left"
+        onPointerDown={startResize('left')}
+        title="Drag to resize timeline"
+        aria-hidden="true"
+      />
+      <div
+        className="resize-handle resize-handle-right"
+        onPointerDown={startResize('right')}
+        title="Drag to resize timeline"
+        aria-hidden="true"
+      />
       {/* Header Row: Digital Readout & Action Controls (UX-04 unified label) */}
       <div className="timeline-header">
         <div className="val timeline-counter">

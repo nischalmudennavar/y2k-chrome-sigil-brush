@@ -1,4 +1,5 @@
 import React from 'react';
+import { useResizablePanel } from '../hooks/useResizablePanel';
 
 interface GlobalToolsDockProps {
   canUndo: boolean;
@@ -86,12 +87,27 @@ export const GlobalToolsDock: React.FC<GlobalToolsDockProps> = ({
   panMode,
   onTogglePan,
   timelineVisible,
-}) => (
-  <div
-    className={`global-tools-dock${timelineVisible ? ' timeline-visible' : ''}`}
-    role="toolbar"
-    aria-label="Global canvas controls"
-  >
+}) => {
+  const { size, startResize } = useResizablePanel({
+    initialWidth: null,
+    initialHeight: null,
+    minWidth: 150,
+    maxWidth: 540,
+  });
+
+  return (
+    <div
+      className={`global-tools-dock${timelineVisible ? ' timeline-visible' : ''}`}
+      role="toolbar"
+      aria-label="Global canvas controls"
+      style={{ width: size.width ? `${size.width}px` : undefined }}
+    >
+      <div
+        className="resize-handle resize-handle-left"
+        onPointerDown={startResize('left')}
+        title="Drag to resize toolbar"
+        aria-hidden="true"
+      />
     <div className="global-tools-row" role="group" aria-label="Canvas actions">
       <DockButton label="Undo" disabled={!canUndo} onClick={onUndo}>
         <Icon><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-2" /></Icon>
@@ -135,4 +151,5 @@ export const GlobalToolsDock: React.FC<GlobalToolsDockProps> = ({
       </DockButton>
     </div>
   </div>
-);
+  );
+};

@@ -86,7 +86,7 @@ export function useSigilActions({
         label: `Sigil (${STYLE_NAMES[chosenStyle]})`,
       });
 
-      showToast(`✨ Generated ${STYLE_NAMES[chosenStyle]} Sigil`);
+      showToast(`Generated ${STYLE_NAMES[chosenStyle]} Sigil`);
     },
     [params, pipelineRef, pushHistoryStep, setSymmetry, showToast, sigilStyle, strokesRef, symmetry]
   );
@@ -137,8 +137,8 @@ export function useSigilActions({
       });
       showToast(
         kind === 'thorns'
-          ? `🗡️ Attached Straight Thorns to Stroke #${targetIdx + 1}`
-          : `⚡ Attached Spikes to Stroke #${targetIdx + 1}`
+          ? `Attached Straight Thorns to Stroke #${targetIdx + 1}`
+          : `Attached Spikes to Stroke #${targetIdx + 1}`
       );
     },
     [pipelineRef, pushHistoryStep, selectedStrokeIndexRef, showToast, strokesRef]

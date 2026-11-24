@@ -186,7 +186,7 @@ export const App: React.FC = () => {
         const sel = strokesRef.current[index];
         setParams({ ...sel.params });
         setSymmetry(sel.symmetry);
-        showToast(`🎯 Selected Stroke #${index + 1} (${sel.symmetry})`);
+        showToast(`Selected Stroke #${index + 1} (${sel.symmetry})`);
       }
       if (pipelineRef.current) {
         pipelineRef.current.dirty = true;
@@ -225,7 +225,7 @@ export const App: React.FC = () => {
       removed: [target],
       label: `Delete Stroke #${selIdx + 1}`,
     });
-    showToast('🗑️ Deleted Stroke');
+    showToast('Deleted Stroke');
   }, [pushHistoryStep, showToast]);
 
   const handleStrokeTransformed = useCallback(
@@ -235,7 +235,7 @@ export const App: React.FC = () => {
         removed: [oldStroke],
         label: 'Transform Endpoints',
       });
-      showToast('⚡ Transformed Stroke Endpoints');
+      showToast('Transformed Stroke Endpoints');
     },
     [pushHistoryStep, showToast]
   );
@@ -636,7 +636,7 @@ export const App: React.FC = () => {
           if (pipelineRef.current) {
             pipelineRef.current.dirty = true;
           }
-          showToast('✨ Applied Playground Parameters to Canvas');
+          showToast('Applied Playground Parameters to Canvas');
         }}
       />
     </>

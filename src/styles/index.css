@@ -35,7 +35,9 @@ body {
   height: 100%;
   background: var(--bg);
   color: var(--fg);
-  font-family: 'Michroma', -apple-system, system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
   overflow: hidden;
   transition: background-color 0.4s ease, color 0.4s ease;
 }
@@ -339,10 +341,9 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: 'Michroma', sans-serif;
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--accent);
   text-shadow: 0 0 10px var(--accent-glow);
@@ -361,8 +362,7 @@ body {
 }
 
 .deck-badge {
-  font-family: 'Michroma', sans-serif;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.04em;
   padding: 2.5px 8px;
@@ -383,8 +383,12 @@ body {
 }
 
 .deck-content {
-  overflow: hidden;
+  overflow: visible;
   min-height: 0;
+}
+
+.sidebar-deck.is-collapsed .deck-content {
+  overflow: hidden;
 }
 
 /* Collapsed State for Deck */
@@ -407,12 +411,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: 'Michroma', sans-serif;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #9cb2d6;
+  color: #b8cae6;
   margin: 18px 0 12px 0;
 }
 
@@ -583,18 +586,18 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: #C8D2E4;
+  color: #e2eaf6;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.85);
   margin-bottom: 7px;
 }
 
 .row label span {
   font-family: var(--font-readout, 'JetBrains Mono', 'Space Mono', monospace);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
@@ -736,10 +739,10 @@ select {
   width: 100%;
   padding: 8px 28px 8px 10px;
   font: inherit;
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.03em;
-  color: #e2e8f4;
+  letter-spacing: 0.02em;
+  color: #eef3fc;
   background-color: #1c212c;
   background-image:
     linear-gradient(45deg, transparent 50%, var(--accent, #7fb6ff) 50%),
@@ -821,14 +824,14 @@ option {
 }
 
 button {
-  padding: 8px 8px;
+  padding: 8px 10px;
   font: inherit;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   white-space: nowrap;
-  color: #dbe3f1;
+  color: #e8eef9;
   background: linear-gradient(180deg, #343b49 0%, #222733 48%, #181c25 52%, #1b202a 100%);
   border: 1px solid #2d3444;
   border-top: 1px solid #58647f;
@@ -1071,10 +1074,10 @@ button.is-active {
   flex: 1 1 0;
   min-width: 0;
   box-sizing: border-box;
-  padding: 6px 1px;
-  font-size: 8.5px;
+  padding: 7px 4px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   color: #B2BDD1; /* High contrast > 4.5:1 against dark surface */
   background: transparent;
@@ -1084,8 +1087,7 @@ button.is-active {
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1561,8 +1563,11 @@ button.is-active {
 
 .shortcuts-modal {
   width: 100%;
-  max-width: 620px;
+  max-width: 680px;
   max-height: 85vh;
+  min-width: 320px;
+  min-height: 260px;
+  resize: both;
   display: flex;
   flex-direction: column;
   background: var(--panel-bg);
@@ -2297,6 +2302,10 @@ button.is-active {
   max-width: 1320px;
   height: 90vh;
   max-height: 900px;
+  min-width: 480px;
+  min-height: 360px;
+  resize: both;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background:
@@ -3504,6 +3513,7 @@ button.is-active {
 
 .global-tools-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
@@ -3559,10 +3569,10 @@ button.is-active {
 }
 
 .global-tools-zoom {
-  min-width: 40px;
+  min-width: 44px;
   color: var(--readout-color);
   font-family: var(--font-readout);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -3584,4 +3594,52 @@ button.is-active {
     min-width: 30px;
     height: 30px;
   }
+}
+
+/* Drag Resize Handles for Floating Panels */
+.resize-handle {
+  position: absolute;
+  z-index: 60;
+  touch-action: none;
+  transition: background-color 0.15s ease;
+}
+
+.resize-handle-right {
+  top: 8px;
+  right: -3px;
+  bottom: 12px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.resize-handle-left {
+  top: 8px;
+  left: -3px;
+  bottom: 12px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.resize-handle-bottom {
+  left: 8px;
+  right: 12px;
+  bottom: -3px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.resize-handle-corner {
+  right: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  border-bottom-right-radius: 12px;
+}
+
+.resize-handle-right:hover,
+.resize-handle-left:hover,
+.resize-handle-bottom:hover,
+.resize-handle-corner:hover {
+  background: var(--accent-ambient, rgba(127, 182, 255, 0.28));
 }

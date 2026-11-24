@@ -4,6 +4,7 @@ import { PAL, PARAM_DEFS, SYMMETRY_MODES } from '../constants/presets';
 import { BaseStyle } from '../core/export';
 import { SigilStyle } from '../core/sigilGenerator';
 import { SliderRow } from './SliderRow';
+import { useResizablePanel } from '../hooks/useResizablePanel';
 
 const ChevronIcon: React.FC<{ className?: string }> = ({ className = 'deck-chevron' }) => (
   <svg
@@ -274,8 +275,25 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const chromeDefs = PARAM_DEFS.filter((d) => d.category === 'chrome');
   const compDefs = PARAM_DEFS.filter((d) => d.category === 'comp');
 
+  const { size, startResize } = useResizablePanel({
+    initialWidth: 360,
+    initialHeight: null,
+    minWidth: 300,
+    maxWidth: 640,
+    minHeight: 280,
+    maxHeight: 1200,
+  });
+
   return (
-    <aside id="panel" className="sidebar panel-island" aria-label="Control Panel">
+    <aside
+      id="panel"
+      className="sidebar panel-island"
+      aria-label="Control Panel"
+      style={{
+        width: size.width ? `${size.width}px` : undefined,
+        height: size.height ? `${size.height}px` : undefined,
+      }}
+    >
       {/* Pinned Top Header: Brand bar & Segmented Mode Switcher */}
       <div className="panel-header-section">
         <div className="panel-brand-bar">
@@ -1014,8 +1032,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
               <div className="export-hint">
                 {exp3dBase === 'extruded'
-                  ? '✨ Vector Extrusion directly exports mathematically smooth CAD solids from your spline paths (zero rasterization, clean vertical walls, no stair-stepping).'
-                  : '✨ Sculpted styles generate continuous sub-pixel relief with 24-bit heightfield precision and Laplacian boundary smoothing.'}
+                  ? 'Vector Extrusion directly exports mathematically smooth CAD solids from your spline paths (zero rasterization, clean vertical walls, no stair-stepping).'
+                  : 'Sculpted styles generate continuous sub-pixel relief with 24-bit heightfield precision and Laplacian boundary smoothing.'}
               </div>
 
               {exportStatus && <div className="export-status">{exportStatus}</div>}
@@ -1027,6 +1045,24 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           Drag to draw. Pinch or scroll wheel to zoom. Hold Spacebar to pan. Paste (⌘V) or load a reference image to trace sigils. Pen pressure changes thickness. Ctrl/Cmd+Z to undo.
         </div>
       </div>
+      <div
+        className="resize-handle resize-handle-right"
+        onPointerDown={startResize('right')}
+        title="Drag to resize width"
+        aria-hidden="true"
+      />
+      <div
+        className="resize-handle resize-handle-bottom"
+        onPointerDown={startResize('bottom')}
+        title="Drag to resize height"
+        aria-hidden="true"
+      />
+      <div
+        className="resize-handle resize-handle-corner"
+        onPointerDown={startResize('corner-br')}
+        title="Drag to resize panel"
+        aria-hidden="true"
+      />
     </aside>
   );
 };

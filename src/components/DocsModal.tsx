@@ -660,7 +660,6 @@ export const DocsModal: React.FC<DocsModalProps> = ({
                 onClick={handleApplyToCanvas}
                 title="Apply these playground parameters to the main canvas"
               >
-                <span>⚡</span>
                 <span>Apply to Canvas</span>
               </button>
             )}
@@ -676,7 +675,7 @@ export const DocsModal: React.FC<DocsModalProps> = ({
           <aside className="docs-preview-deck" aria-label="Interactive Preview Deck">
             <div className="docs-deck-header">
               <span className="deck-title-text">LIVE SIGIL LAB</span>
-              <span className="deck-fps-badge">WEBGL // 60 FPS</span>
+              <span className="deck-fps-badge">WEBGL 60 FPS</span>
             </div>
 
             {/* Embedded WebGL Canvas */}
@@ -705,7 +704,7 @@ export const DocsModal: React.FC<DocsModalProps> = ({
                     onClick={handleRegenerateSigil}
                     title="Regenerate random variation of this archetype"
                   >
-                    🎲 Regenerate
+                    Regenerate
                   </button>
                 </div>
                 <div className="docs-sigil-selector">
@@ -758,7 +757,7 @@ export const DocsModal: React.FC<DocsModalProps> = ({
                       }}
                       title="Use active user-drawn canvas strokes"
                     >
-                      ✏️ My Drawing ({canvasStrokes.length})
+                      My Drawing ({canvasStrokes.length})
                     </button>
                   )}
                 </div>
@@ -1052,7 +1051,7 @@ export const DocsModal: React.FC<DocsModalProps> = ({
                         {/* 1. How It Works */}
                         <div className="param-detail-section">
                           <div className="detail-heading">
-                            <span className="detail-icon">⚙️</span>
+                            <span className="detail-icon">MOD</span>
                             <span className="detail-title">HOW IT WORKS UNDER THE HOOD</span>
                           </div>
                           <p className="detail-text">{item.mechanism}</p>
@@ -1061,7 +1060,7 @@ export const DocsModal: React.FC<DocsModalProps> = ({
                         {/* 2. Visual Behavior */}
                         <div className="param-detail-section">
                           <div className="detail-heading">
-                            <span className="detail-icon">👁️</span>
+                            <span className="detail-icon">FX</span>
                             <span className="detail-title">VISUAL INTUITION & BEHAVIOR</span>
                           </div>
                           <p className="detail-text">{item.visualBehavior}</p>
@@ -1070,7 +1069,7 @@ export const DocsModal: React.FC<DocsModalProps> = ({
                         {/* 3. When to Use What Value */}
                         <div className="param-detail-section">
                           <div className="detail-heading">
-                            <span className="detail-icon">🎯</span>
+                            <span className="detail-icon">TIP</span>
                             <span className="detail-title">WHEN TO USE WHAT VALUE</span>
                           </div>
                           <div className="param-use-cases">
@@ -1088,7 +1087,7 @@ export const DocsModal: React.FC<DocsModalProps> = ({
 
                         {/* 4. Pro Combination Tip */}
                         <div className="param-pro-tip-box">
-                          <span className="pro-tip-icon">💡</span>
+                          <span className="pro-tip-icon">TIP</span>
                           <div className="pro-tip-content">
                             <span className="pro-tip-tag">PRO CYBERNETIC TIP:</span>
                             <span className="pro-tip-text">{item.proTip}</span>
