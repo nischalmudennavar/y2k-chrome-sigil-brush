@@ -9,12 +9,14 @@ import { TimelineDeck } from './components/TimelineDeck';
 import { NoiseOverlay } from './components/NoiseOverlay';
 import { ShortcutsModal } from './components/ShortcutsModal';
 import { DocsModal } from './components/DocsModal';
+import { ToastStack } from './components/ToastStack';
 import { BaseStyle, export3DModel, exportImage } from './core/export';
 import { buildStrokeMesh } from './core/geometry';
 import { useThemeVibe } from './hooks/useThemeVibe';
 import { useHistoryTimeline } from './hooks/useHistoryTimeline';
 import { useSigilActions } from './hooks/useSigilActions';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
+import { useToastQueue } from './hooks/useToastQueue';
 
 export const App: React.FC = () => {
   const [params, setParams] = useState<BrushParams>(() => {
@@ -44,8 +46,7 @@ export const App: React.FC = () => {
   const [panelVisible, setPanelVisible] = useState<boolean>(true);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState<boolean>(false);
   const [docsModalOpen, setDocsModalOpen] = useState<boolean>(false);
-  const [toastMessage, setToastMessage] = useState<string>('');
-  const toastTimerRef = useRef<number | null>(null);
+  const { toasts, showToast } = useToastQueue();
 
   const [view, setView] = useState<ViewTransform>({ scale: 1, x: 0, y: 0 });
   const [refState, setRefState] = useState<RefImageState>({
@@ -62,17 +63,6 @@ export const App: React.FC = () => {
 
   const pipelineRef = useRef<RenderPipeline | null>(null);
   const strokesRef = useRef<Stroke[]>([]);
-
-  const showToast = useCallback((msg: string) => {
-    setToastMessage(msg);
-    if (toastTimerRef.current !== null) {
-      window.clearTimeout(toastTimerRef.current);
-    }
-    toastTimerRef.current = window.setTimeout(() => {
-      setToastMessage('');
-      toastTimerRef.current = null;
-    }, 1200);
-  }, []);
 
   const handleToggleAnimation = useCallback(() => {
     setAnimOn((value) => {
@@ -585,7 +575,7 @@ export const App: React.FC = () => {
         timelineVisible={timelineVisible}
       />
 
-      {toastMessage && <div className="hud-toast">{toastMessage}</div>}
+      <ToastStack toasts={toasts} />
 
       <TimelineDeck
         currentStep={historyState.currentStep}

@@ -1521,35 +1521,127 @@ button.is-active {
   transform: translateY(-1px);
 }
 
-/* --- Ephemeral HUD Toast --- */
-.hud-toast {
+/* --- Skeuomorphic Event Queue Toast Stack --- */
+.toast-stack {
   position: fixed;
-  bottom: 124px;
+  top: 18px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 90;
-  padding: 8px 16px;
-  font-family: 'Michroma', sans-serif;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  color: var(--readout-color);
-  background: var(--readout-bg);
-  border: 1px solid var(--accent);
-  border-radius: 20px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.75), 0 0 20px var(--accent-glow);
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 36px));
   pointer-events: none;
-  animation: hudToastIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes hudToastIn {
+.skeuo-toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 190px;
+  max-width: 100%;
+  padding: 9px 14px 11px 12px;
+  overflow: hidden;
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.014) 0px,
+      rgba(255, 255, 255, 0.014) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-top: 1px solid var(--panel-border-top);
+  box-shadow:
+    0 3px 0 #07090e,
+    0 10px 24px rgba(0, 0, 0, 0.78),
+    0 0 18px var(--accent-ambient),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.7);
+  animation: skeuoToastIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-led {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow:
+    0 0 8px var(--accent-glow),
+    inset 0 1px 1px rgba(255, 255, 255, 0.75);
+}
+
+.toast-text {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #edf3fc;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toast-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--font-readout, 'JetBrains Mono', monospace);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  color: var(--readout-color);
+  background: var(--readout-bg, #080a10);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid #1e2535;
+  border-top-color: #0b0e16;
+  border-bottom-color: #2e374d;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.9),
+    0 1px 0 rgba(255, 255, 255, 0.08);
+  text-shadow: 0 0 6px var(--accent-glow);
+}
+
+.toast-life-bar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-track), var(--accent));
+  box-shadow: 0 0 6px var(--accent-glow);
+  transform-origin: left center;
+  animation: toastLifeDrain linear forwards;
+}
+
+@keyframes skeuoToastIn {
   from {
     opacity: 0;
-    transform: translate(-50%, 12px) scale(0.96);
+    transform: translateY(-8px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toastLifeDrain {
+  from {
+    transform: scaleX(1);
+    opacity: 0.95;
+  }
+  to {
+    transform: scaleX(0);
+    opacity: 0.25;
   }
 }
 
