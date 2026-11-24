@@ -3511,6 +3511,38 @@ button.is-active {
   bottom: 172px;
 }
 
+.global-tools-drag-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  margin: -2px -2px 2px -2px;
+  border-radius: 6px;
+  cursor: grab;
+  touch-action: none;
+  transition: background-color 0.15s ease;
+}
+
+.global-tools-drag-bar:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.global-tools-drag-bar:active {
+  cursor: grabbing;
+  background: var(--accent-ambient, rgba(127, 182, 255, 0.16));
+}
+
+.global-tools-drag-dots {
+  width: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(200, 214, 238, 0.35);
+}
+
+.global-tools-drag-bar:hover .global-tools-drag-dots {
+  background: var(--accent, #7fb6ff);
+}
+
 .global-tools-row {
   display: flex;
   flex-wrap: wrap;

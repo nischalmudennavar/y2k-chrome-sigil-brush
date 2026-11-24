@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 
 interface GlobalToolsDockProps {
@@ -88,6 +88,9 @@ export const GlobalToolsDock: React.FC<GlobalToolsDockProps> = ({
   onTogglePan,
   timelineVisible,
 }) => {
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+
   const { size, startResize } = useResizablePanel({
     initialWidth: null,
     initialHeight: null,
@@ -95,13 +98,87 @@ export const GlobalToolsDock: React.FC<GlobalToolsDockProps> = ({
     maxWidth: 540,
   });
 
+  useEffect(() => {
+    const clampPosition = () => {
+      setPosition((prev) => {
+        if (!prev || !dockRef.current) return prev;
+        const rect = dockRef.current.getBoundingClientRect();
+        const maxX = Math.max(12, window.innerWidth - rect.width - 12);
+        const maxY = Math.max(12, window.innerHeight - rect.height - 12);
+        const x = Math.min(maxX, Math.max(12, prev.x));
+        const y = Math.min(maxY, Math.max(12, prev.y));
+        if (x === prev.x && y === prev.y) return prev;
+        return { x, y };
+      });
+    };
+    window.addEventListener('resize', clampPosition);
+    return () => window.removeEventListener('resize', clampPosition);
+  }, []);
+
+  const startDrag = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const dockEl = dockRef.current;
+    if (!dockEl) return;
+    const rect = dockEl.getBoundingClientRect();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origX = rect.left;
+    const origY = rect.top;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      const curRect = dockEl.getBoundingClientRect();
+      const maxX = Math.max(12, window.innerWidth - curRect.width - 12);
+      const maxY = Math.max(12, window.innerHeight - curRect.height - 12);
+      setPosition({
+        x: Math.round(Math.min(maxX, Math.max(12, origX + dx))),
+        y: Math.round(Math.min(maxY, Math.max(12, origY + dy))),
+      });
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  }, []);
+
   return (
     <div
-      className={`global-tools-dock${timelineVisible ? ' timeline-visible' : ''}`}
+      ref={dockRef}
+      className={`global-tools-dock${timelineVisible && !position ? ' timeline-visible' : ''}`}
       role="toolbar"
       aria-label="Global canvas controls"
-      style={{ width: size.width ? `${size.width}px` : undefined }}
+      style={{
+        width: size.width ? `${size.width}px` : undefined,
+        ...(position
+          ? {
+              left: `${position.x}px`,
+              top: `${position.y}px`,
+              right: 'auto',
+              bottom: 'auto',
+            }
+          : {}),
+      }}
     >
+      <div
+        className="global-tools-drag-bar"
+        onPointerDown={startDrag}
+        onDoubleClick={() => setPosition(null)}
+        title="Drag to move toolbar (double-click to reset)"
+        aria-label="Drag toolbar"
+      >
+        <span className="global-tools-drag-dots" aria-hidden="true" />
+      </div>
       <div
         className="resize-handle resize-handle-left"
         onPointerDown={startResize('left')}
